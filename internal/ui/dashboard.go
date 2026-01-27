@@ -261,16 +261,13 @@ func (m Dashboard) View() string {
 		bottomContent = helpLine
 	}
 
-	// Calculate available height for main content
 	topContent := infoBox + "\n" + charts
-
-	topHeight := lipgloss.Height(topContent)
 	bottomHeight := lipgloss.Height(bottomContent)
-	middleHeight := max(m.height-topHeight-bottomHeight, 0)
 
-	middle := strings.Repeat("\n", middleHeight)
+	topLayer := lipgloss.NewLayer(topContent)
+	bottomLayer := lipgloss.NewLayer(bottomContent).Y(m.height - bottomHeight)
 
-	return topContent + middle + bottomContent
+	return lipgloss.NewCanvas(topLayer, bottomLayer).Render()
 }
 
 // Private
