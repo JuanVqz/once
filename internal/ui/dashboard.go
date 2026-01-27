@@ -97,7 +97,7 @@ func NewDashboard(ns *docker.Namespace, app *docker.Application, scraper *metric
 		return SlidingSum(data, 12)
 	})
 
-	cpuChart := NewChart("CPU %", chartColors.Blue, UnitPercent, func() []float64 {
+	cpuChart := NewChart("CPU", chartColors.Blue, UnitPercent, func() []float64 {
 		samples := dockerScraper.Fetch(service, ChartHistoryLength)
 		data := make([]float64, len(samples))
 		for i, s := range samples {
