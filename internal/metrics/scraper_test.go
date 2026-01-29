@@ -1,10 +1,18 @@
 package metrics
 
 import (
+	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestMetricsScraperRingBuffer(t *testing.T) {
@@ -188,4 +196,157 @@ func TestMetricsScraperSettingsDefaults(t *testing.T) {
 	settings = settings.withDefaults()
 
 	assert.Equal(t, 200, settings.BufferSize)
+}
+
+func TestMetricsScraperScrape(t *testing.T) {
+	var successCount atomic.Int64
+	successCount.Store(100)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/metrics" {
+			http.NotFound(w, r)
+			return
+		}
+		content := fmt.Sprintf(`# HELP kamal_proxy_http_requests_total HTTP requests processed
+# TYPE kamal_proxy_http_requests_total counter
+kamal_proxy_http_requests_total{service="myapp",method="GET",status="200"} %d
+kamal_proxy_http_requests_total{service="myapp",method="GET",status="404"} 20
+kamal_proxy_http_requests_total{service="myapp",method="GET",status="500"} 5
+`, successCount.Load())
+		w.Write([]byte(content))
+	}))
+	defer server.Close()
+
+	scraper := NewMetricsScraper(ScraperSettings{
+		Port:       serverPort(t, server),
+		BufferSize: 10,
+	})
+
+	// First scrape establishes baseline
+	scraper.Scrape(context.Background())
+	require.NoError(t, scraper.LastError())
+
+	samples := scraper.Fetch("myapp", 1)
+	require.Len(t, samples, 1)
+	assert.Equal(t, int64(0), samples[0].Success)
+	assert.Equal(t, int64(0), samples[0].ClientErrors)
+	assert.Equal(t, int64(0), samples[0].ServerErrors)
+
+	// Second scrape with same values - deltas are 0
+	scraper.Scrape(context.Background())
+	samples = scraper.Fetch("myapp", 1)
+	assert.Equal(t, int64(0), samples[0].Success)
+
+	// Simulate 50 new successful requests
+	successCount.Store(150)
+	scraper.Scrape(context.Background())
+
+	samples = scraper.Fetch("myapp", 1)
+	assert.Equal(t, int64(50), samples[0].Success)
+	assert.Equal(t, int64(0), samples[0].ClientErrors)
+	assert.Equal(t, int64(0), samples[0].ServerErrors)
+}
+
+func TestMetricsScraperScrapeMultipleServices(t *testing.T) {
+	var app1Count, app2Count atomic.Int64
+	app1Count.Store(100)
+	app2Count.Store(500)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		content := fmt.Sprintf(`# TYPE kamal_proxy_http_requests_total counter
+kamal_proxy_http_requests_total{service="app1",method="GET",status="200"} %d
+kamal_proxy_http_requests_total{service="app2",method="GET",status="200"} %d
+`, app1Count.Load(), app2Count.Load())
+		w.Write([]byte(content))
+	}))
+	defer server.Close()
+
+	scraper := NewMetricsScraper(ScraperSettings{
+		Port:       serverPort(t, server),
+		BufferSize: 10,
+	})
+
+	scraper.Scrape(context.Background())
+	require.NoError(t, scraper.LastError())
+
+	app1Count.Store(120)
+	app2Count.Store(600)
+	scraper.Scrape(context.Background())
+
+	samples1 := scraper.Fetch("app1", 1)
+	samples2 := scraper.Fetch("app2", 1)
+
+	assert.Equal(t, int64(20), samples1[0].Success)
+	assert.Equal(t, int64(100), samples2[0].Success)
+}
+
+func TestMetricsScraperScrapeServerError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	scraper := NewMetricsScraper(ScraperSettings{
+		Port:       serverPort(t, server),
+		BufferSize: 10,
+	})
+
+	scraper.Scrape(context.Background())
+	assert.Error(t, scraper.LastError())
+}
+
+func TestMetricsScraperScrapeServerUnavailable(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	port := serverPort(t, server)
+	server.Close()
+
+	scraper := NewMetricsScraper(ScraperSettings{
+		Port:       port,
+		BufferSize: 10,
+	})
+
+	scraper.Scrape(context.Background())
+	assert.Error(t, scraper.LastError())
+	assert.Contains(t, scraper.LastError().Error(), "fetching metrics")
+}
+
+func TestMetricsScraperScrapeErrorClears(t *testing.T) {
+	available := atomic.Bool{}
+	available.Store(true)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !available.Load() {
+			http.Error(w, "unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		w.Write([]byte(`# TYPE kamal_proxy_http_requests_total counter
+kamal_proxy_http_requests_total{service="myapp",method="GET",status="200"} 100
+`))
+	}))
+	defer server.Close()
+
+	scraper := NewMetricsScraper(ScraperSettings{
+		Port:       serverPort(t, server),
+		BufferSize: 10,
+	})
+
+	scraper.Scrape(context.Background())
+	assert.NoError(t, scraper.LastError())
+
+	available.Store(false)
+	scraper.Scrape(context.Background())
+	assert.Error(t, scraper.LastError())
+
+	available.Store(true)
+	scraper.Scrape(context.Background())
+	assert.NoError(t, scraper.LastError())
+}
+
+func serverPort(t *testing.T, server *httptest.Server) int {
+	t.Helper()
+	u, err := url.Parse(server.URL)
+	require.NoError(t, err)
+	port, err := strconv.Atoi(u.Port())
+	require.NoError(t, err)
+	return port
 }
