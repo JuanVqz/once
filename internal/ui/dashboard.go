@@ -30,31 +30,33 @@ var chartColors = struct {
 }
 
 type dashboardKeyMap struct {
-	Settings key.Binding
-	Upgrade  key.Binding
-	NewApp   key.Binding
-	Logs     key.Binding
-	PrevApp  key.Binding
-	NextApp  key.Binding
-	Quit     key.Binding
+	Settings  key.Binding
+	Upgrade   key.Binding
+	StartStop key.Binding
+	NewApp    key.Binding
+	Logs      key.Binding
+	PrevApp   key.Binding
+	NextApp   key.Binding
+	Quit      key.Binding
 }
 
 func (k dashboardKeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.PrevApp, k.NextApp, k.Settings, k.Logs, k.NewApp, k.Upgrade, k.Quit}
+	return []key.Binding{k.PrevApp, k.NextApp, k.Settings, k.Logs, k.NewApp, k.Upgrade, k.StartStop, k.Quit}
 }
 
 func (k dashboardKeyMap) FullHelp() [][]key.Binding {
-	return [][]key.Binding{{k.PrevApp, k.NextApp, k.Settings, k.Logs, k.NewApp, k.Upgrade, k.Quit}}
+	return [][]key.Binding{{k.PrevApp, k.NextApp, k.Settings, k.Logs, k.NewApp, k.Upgrade, k.StartStop, k.Quit}}
 }
 
 var dashboardKeys = dashboardKeyMap{
-	Settings: key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "settings")),
-	Upgrade:  key.NewBinding(key.WithKeys("u"), key.WithHelp("u", "upgrade")),
-	NewApp:   key.NewBinding(key.WithKeys("n"), key.WithHelp("n", "new app")),
-	Logs:     key.NewBinding(key.WithKeys("g"), key.WithHelp("g", "logs")),
-	PrevApp:  key.NewBinding(key.WithKeys("left", "h"), key.WithHelp("←/h", "prev app")),
-	NextApp:  key.NewBinding(key.WithKeys("right", "l"), key.WithHelp("→/l", "next app")),
-	Quit:     key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "quit")),
+	Settings:  key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "settings")),
+	Upgrade:   key.NewBinding(key.WithKeys("u"), key.WithHelp("u", "upgrade")),
+	StartStop: key.NewBinding(key.WithKeys("o"), key.WithHelp("o", "start/stop")),
+	NewApp:    key.NewBinding(key.WithKeys("n"), key.WithHelp("n", "new app")),
+	Logs:      key.NewBinding(key.WithKeys("g"), key.WithHelp("g", "logs")),
+	PrevApp:   key.NewBinding(key.WithKeys("left", "h"), key.WithHelp("←/h", "prev app")),
+	NextApp:   key.NewBinding(key.WithKeys("right", "l"), key.WithHelp("→/l", "next app")),
+	Quit:      key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "quit")),
 }
 
 // dashboardState holds state that Content render functions need access to.
@@ -62,6 +64,7 @@ var dashboardKeys = dashboardKeyMap{
 type dashboardState struct {
 	app       *docker.Application
 	upgrading bool
+	toggling  bool
 	progress  ProgressBusy
 	help      help.Model
 }
@@ -83,6 +86,10 @@ type upgradeFinishedMsg struct {
 	err error
 }
 
+type startStopFinishedMsg struct {
+	err error
+}
+
 func NewDashboard(ns *docker.Namespace, app *docker.Application, scraper *metrics.MetricsScraper, dockerScraper *docker.Scraper) Dashboard {
 	service := app.Settings.Name
 
@@ -92,13 +99,13 @@ func NewDashboard(ns *docker.Namespace, app *docker.Application, scraper *metric
 	}
 
 	header := NewContent(func(width, height int) string {
-		return renderInfoBox(width, state.app, state.upgrading)
+		return renderInfoBox(width, state.app, state.upgrading, state.toggling)
 	})
 
 	footer := NewContent(func(width, height int) string {
 		helpView := state.help.View(dashboardKeys)
 		helpLine := Styles.HelpLine(width, helpView)
-		if state.upgrading {
+		if state.upgrading || state.toggling {
 			return state.progress.View() + "\n" + helpLine
 		}
 		return helpLine
@@ -233,10 +240,15 @@ func (m Dashboard) Update(msg tea.Msg) (Component, tea.Cmd) {
 			m.settingsMenu, _ = m.settingsMenu.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
 			return m, nil
 		}
-		if key.Matches(msg, dashboardKeys.Upgrade) && !m.state.upgrading {
+		if key.Matches(msg, dashboardKeys.Upgrade) && !m.state.upgrading && !m.state.toggling {
 			m.state.upgrading = true
 			m.state.progress = NewProgressBusy(m.width, Colors.Border)
 			return m, tea.Batch(m.state.progress.Init(), m.runUpgrade())
+		}
+		if key.Matches(msg, dashboardKeys.StartStop) && !m.state.toggling && !m.state.upgrading {
+			m.state.toggling = true
+			m.state.progress = NewProgressBusy(m.width, Colors.Border)
+			return m, tea.Batch(m.state.progress.Init(), m.runStartStop())
 		}
 		if key.Matches(msg, dashboardKeys.Logs) {
 			return m, func() tea.Msg { return navigateToLogsMsg{app: m.state.app} }
@@ -254,6 +266,9 @@ func (m Dashboard) Update(msg tea.Msg) (Component, tea.Cmd) {
 	case upgradeFinishedMsg:
 		m.state.upgrading = false
 
+	case startStopFinishedMsg:
+		m.state.toggling = false
+
 	case dashboardTickMsg:
 		cmds = append(cmds, tea.Tick(time.Second, func(time.Time) tea.Msg { return dashboardTickMsg{} }))
 
@@ -262,7 +277,7 @@ func (m Dashboard) Update(msg tea.Msg) (Component, tea.Cmd) {
 		m.layout = updated.(StackLayout)
 
 	case progressBusyTickMsg:
-		if m.state.upgrading {
+		if m.state.upgrading || m.state.toggling {
 			var cmd tea.Cmd
 			m.state.progress, cmd = m.state.progress.Update(msg)
 			cmds = append(cmds, cmd)
@@ -298,13 +313,31 @@ func (m Dashboard) runUpgrade() tea.Cmd {
 	}
 }
 
+func (m Dashboard) runStartStop() tea.Cmd {
+	return func() tea.Msg {
+		var err error
+		if m.state.app.Running {
+			err = m.state.app.Stop(context.Background())
+		} else {
+			err = m.state.app.Start(context.Background())
+		}
+		return startStopFinishedMsg{err: err}
+	}
+}
+
 // Helpers
 
-func renderInfoBox(width int, app *docker.Application, upgrading bool) string {
+func renderInfoBox(width int, app *docker.Application, upgrading, toggling bool) string {
 	var status string
 	var statusColor color.Color
 	if upgrading {
 		status = "upgrading..."
+		statusColor = Colors.Warning
+	} else if toggling && app.Running {
+		status = "stopping..."
+		statusColor = Colors.Warning
+	} else if toggling {
+		status = "starting..."
 		statusColor = Colors.Warning
 	} else if app.Running {
 		status = "running"

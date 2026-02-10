@@ -162,6 +162,39 @@ func TestScraperIgnoresStoppedContainers(t *testing.T) {
 	assert.Nil(t, s.Fetch("myapp", 1))
 }
 
+func TestScraperRecordsZerosForStoppedApp(t *testing.T) {
+	delivered := make(chan struct{}, 1)
+	client := &mockStatsClient{
+		containers: []container.Summary{
+			{ID: "abc123", Names: []string{"/test-app-myapp-xyz"}, State: "running"},
+		},
+		stats: map[string]container.StatsResponse{
+			"abc123": makeStats(50.0, 1000),
+		},
+		delivered: delivered,
+	}
+
+	s := newTestScraper(client)
+	s.Scrape(context.Background())
+	<-delivered
+	s.Scrape(context.Background())
+
+	samples := s.Fetch("myapp", 1)
+	require.Len(t, samples, 1)
+	assert.Equal(t, 50.0, samples[0].CPUPercent)
+
+	// Stop the container
+	client.containers = []container.Summary{
+		{ID: "abc123", Names: []string{"/test-app-myapp-xyz"}, State: "exited"},
+	}
+	s.Scrape(context.Background())
+
+	samples = s.Fetch("myapp", 1)
+	require.Len(t, samples, 1)
+	assert.Equal(t, 0.0, samples[0].CPUPercent)
+	assert.Equal(t, uint64(0), samples[0].MemoryBytes)
+}
+
 func TestScraperReconnectsOnContainerChange(t *testing.T) {
 	delivered := make(chan struct{}, 1)
 	client := &mockStatsClient{

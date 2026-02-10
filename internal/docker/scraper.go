@@ -117,16 +117,17 @@ func (s *Scraper) Scrape(ctx context.Context) {
 
 	now := time.Now()
 	s.mu.Lock()
-	for appName := range containers {
-		data, ok := s.apps[appName]
-		if !ok || data.latest == nil {
-			continue
-		}
-
-		sample := Sample{
-			Timestamp:   now,
-			CPUPercent:  data.latest.cpuPercent,
-			MemoryBytes: data.latest.memoryBytes,
+	for appName, data := range s.apps {
+		var sample Sample
+		if _, running := containers[appName]; running && data.latest != nil {
+			sample = Sample{
+				Timestamp:   now,
+				CPUPercent:  data.latest.cpuPercent,
+				MemoryBytes: data.latest.memoryBytes,
+			}
+		} else {
+			sample = Sample{Timestamp: now}
+			data.latest = nil
 		}
 
 		data.samples[data.head] = sample
