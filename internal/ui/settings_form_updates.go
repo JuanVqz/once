@@ -11,12 +11,13 @@ import (
 const updatesAutoUpdateField = 0
 
 type SettingsFormUpdates struct {
-	app      *docker.Application
-	settings docker.ApplicationSettings
-	form     Form
+	app        *docker.Application
+	settings   docker.ApplicationSettings
+	form       Form
+	lastResult *docker.OperationResult
 }
 
-func NewSettingsFormUpdates(app *docker.Application) SettingsFormUpdates {
+func NewSettingsFormUpdates(app *docker.Application, lastResult *docker.OperationResult) SettingsFormUpdates {
 	autoUpdateField := NewCheckboxField("Automatically apply updates", app.Settings.AutoUpdate)
 
 	form := NewForm("Done",
@@ -29,9 +30,10 @@ func NewSettingsFormUpdates(app *docker.Application) SettingsFormUpdates {
 	})
 
 	return SettingsFormUpdates{
-		app:      app,
-		settings: app.Settings,
-		form:     form,
+		app:        app,
+		settings:   app.Settings,
+		form:       form,
+		lastResult: lastResult,
 	}
 }
 
@@ -63,4 +65,8 @@ func (m SettingsFormUpdates) Update(msg tea.Msg) (SettingsSection, tea.Cmd) {
 
 func (m SettingsFormUpdates) View() string {
 	return m.form.View()
+}
+
+func (m SettingsFormUpdates) StatusLine() string {
+	return formatOperationStatus("update", m.lastResult)
 }

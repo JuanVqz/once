@@ -13,6 +13,20 @@ type AppState struct {
 	LastUpdate *OperationResult `json:"lu,omitempty"`
 }
 
+func (as *AppState) LastBackupResult() *OperationResult {
+	if as == nil {
+		return nil
+	}
+	return as.LastBackup
+}
+
+func (as *AppState) LastUpdateResult() *OperationResult {
+	if as == nil {
+		return nil
+	}
+	return as.LastUpdate
+}
+
 type OperationResult struct {
 	At    time.Time `json:"at"`
 	Error string    `json:"err,omitempty"`
@@ -24,6 +38,13 @@ func (s *State) BackupDue(appName string) bool {
 
 func (s *State) UpdateDue(appName string) bool {
 	return s.operationDue(appName, func(as *AppState) *OperationResult { return as.LastUpdate })
+}
+
+func (s *State) AppState(appName string) *AppState {
+	if s.Apps == nil {
+		return nil
+	}
+	return s.Apps[appName]
 }
 
 func (s *State) RecordBackup(appName string, err error) {

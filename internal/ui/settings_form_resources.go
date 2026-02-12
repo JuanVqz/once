@@ -69,6 +69,8 @@ func (m SettingsFormResources) Update(msg tea.Msg) (SettingsSection, tea.Cmd) {
 	return m, cmd
 }
 
+func (m SettingsFormResources) StatusLine() string { return "" }
+
 func (m SettingsFormResources) View() string {
 	return m.form.View()
 }

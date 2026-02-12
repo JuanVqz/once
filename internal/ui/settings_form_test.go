@@ -317,7 +317,7 @@ func TestSettingsFormBackups_ActionReadsCurrentFieldValue(t *testing.T) {
 			Backup: docker.BackupSettings{Path: "/old/path"},
 		},
 	}
-	form := NewSettingsFormBackups(app)
+	form := NewSettingsFormBackups(app, nil)
 
 	assert.Equal(t, "/old/path", form.form.TextField(backupsPathField).Value())
 
@@ -347,7 +347,7 @@ func TestSettingsFormBackups_Submit(t *testing.T) {
 	app := &docker.Application{
 		Settings: docker.ApplicationSettings{Name: "chat"},
 	}
-	form := NewSettingsFormBackups(app)
+	form := NewSettingsFormBackups(app, nil)
 
 	// Type a path
 	form = backupsTypeText(form, "/my/backups")

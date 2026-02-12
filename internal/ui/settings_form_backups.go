@@ -14,12 +14,13 @@ const (
 )
 
 type SettingsFormBackups struct {
-	app      *docker.Application
-	settings docker.ApplicationSettings
-	form     Form
+	app        *docker.Application
+	settings   docker.ApplicationSettings
+	form       Form
+	lastResult *docker.OperationResult
 }
 
-func NewSettingsFormBackups(app *docker.Application) SettingsFormBackups {
+func NewSettingsFormBackups(app *docker.Application, lastResult *docker.OperationResult) SettingsFormBackups {
 	pathField := NewTextField("/path/to/backups")
 	pathField.SetValue(app.Settings.Backup.Path)
 
@@ -39,9 +40,10 @@ func NewSettingsFormBackups(app *docker.Application) SettingsFormBackups {
 	})
 
 	return SettingsFormBackups{
-		app:      app,
-		settings: app.Settings,
-		form:     form,
+		app:        app,
+		settings:   app.Settings,
+		form:       form,
+		lastResult: lastResult,
 	}
 }
 
@@ -74,6 +76,10 @@ func (m SettingsFormBackups) Update(msg tea.Msg) (SettingsSection, tea.Cmd) {
 
 func (m SettingsFormBackups) View() string {
 	return m.form.View()
+}
+
+func (m SettingsFormBackups) StatusLine() string {
+	return formatOperationStatus("backup", m.lastResult)
 }
 
 // Helpers

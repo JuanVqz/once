@@ -2,6 +2,8 @@ package ui
 
 import (
 	"context"
+	"fmt"
+	"time"
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
@@ -16,6 +18,7 @@ type SettingsSection interface {
 	Update(tea.Msg) (SettingsSection, tea.Cmd)
 	View() string
 	Title() string
+	StatusLine() string
 }
 
 type SettingsSectionSubmitMsg struct {
@@ -76,6 +79,9 @@ type settingsRunActionMsg struct {
 }
 
 func NewSettings(ns *docker.Namespace, app *docker.Application, sectionType SettingsSectionType) Settings {
+	state, _ := ns.LoadState(context.Background())
+	appState := state.AppState(app.Settings.Name)
+
 	var section SettingsSection
 	switch sectionType {
 	case SettingsSectionApplication:
@@ -87,9 +93,9 @@ func NewSettings(ns *docker.Namespace, app *docker.Application, sectionType Sett
 	case SettingsSectionResources:
 		section = NewSettingsFormResources(app.Settings)
 	case SettingsSectionUpdates:
-		section = NewSettingsFormUpdates(app)
+		section = NewSettingsFormUpdates(app, appState.LastUpdateResult())
 	case SettingsSectionBackups:
-		section = NewSettingsFormBackups(app)
+		section = NewSettingsFormBackups(app, appState.LastBackupResult())
 	}
 
 	return Settings{
@@ -210,11 +216,13 @@ func (m Settings) View() string {
 	var contentView string
 	switch m.state {
 	case settingsStateForm:
-		var errorLine string
+		var statusLine string
 		if m.err != nil {
-			errorLine = lipgloss.NewStyle().Foreground(Colors.Error).Render("Error: " + m.err.Error())
+			statusLine = lipgloss.NewStyle().Foreground(Colors.Error).Render("Error: " + m.err.Error())
+		} else if line := m.section.StatusLine(); line != "" {
+			statusLine = lipgloss.NewStyle().Foreground(Colors.Muted).Render(line)
 		}
-		contentView = lipgloss.JoinVertical(lipgloss.Center, errorLine, "", m.section.View())
+		contentView = lipgloss.JoinVertical(lipgloss.Center, statusLine, "", m.section.View())
 	case settingsStateActionComplete:
 		contentView = m.renderActionComplete()
 	default:
@@ -263,5 +271,46 @@ func (m Settings) runDeploy() tea.Cmd {
 	return func() tea.Msg {
 		err := m.app.Deploy(context.Background(), nil)
 		return settingsDeployFinishedMsg{err: err}
+	}
+}
+
+// Helpers
+
+func formatOperationStatus(label string, result *docker.OperationResult) string {
+	if result == nil {
+		return ""
+	}
+
+	timeAgo := formatTimeAgo(time.Since(result.At))
+
+	if result.Error != "" {
+		return fmt.Sprintf("Last %s %s (failed: %s)", label, timeAgo, result.Error)
+	}
+
+	return fmt.Sprintf("Last %s %s", label, timeAgo)
+}
+
+func formatTimeAgo(d time.Duration) string {
+	switch {
+	case d < time.Minute:
+		return "just now"
+	case d < time.Hour:
+		m := int(d.Minutes())
+		if m == 1 {
+			return "1 minute ago"
+		}
+		return fmt.Sprintf("%d minutes ago", m)
+	case d < 24*time.Hour:
+		h := int(d.Hours())
+		if h == 1 {
+			return "1 hour ago"
+		}
+		return fmt.Sprintf("%d hours ago", h)
+	default:
+		days := int(d.Hours() / 24)
+		if days == 1 {
+			return "1 day ago"
+		}
+		return fmt.Sprintf("%d days ago", days)
 	}
 }

@@ -68,10 +68,6 @@ func (r *Runner) check(ctx context.Context) error {
 		r.checkBackup(ctx, app, state)
 	}
 
-	if err := ns.SaveState(ctx, state); err != nil {
-		return fmt.Errorf("saving state: %w", err)
-	}
-
 	return nil
 }
 
@@ -85,10 +81,7 @@ func (r *Runner) checkUpdate(ctx context.Context, app *docker.Application, state
 
 	r.logger.Info("Running auto-update", "app", app.Settings.Name)
 
-	err := app.Update(ctx, nil)
-	state.RecordUpdate(app.Settings.Name, err)
-
-	if err != nil {
+	if err := app.Update(ctx, nil); err != nil {
 		r.logger.Error("Auto-update failed", "app", app.Settings.Name, "error", err)
 	} else {
 		r.logger.Info("Auto-update completed", "app", app.Settings.Name)
@@ -105,10 +98,7 @@ func (r *Runner) checkBackup(ctx context.Context, app *docker.Application, state
 
 	r.logger.Info("Running auto-backup", "app", app.Settings.Name)
 
-	err := app.Backup(ctx)
-	state.RecordBackup(app.Settings.Name, err)
-
-	if err != nil {
+	if err := app.Backup(ctx); err != nil {
 		r.logger.Error("Auto-backup failed", "app", app.Settings.Name, "error", err)
 	} else {
 		r.logger.Info("Auto-backup completed", "app", app.Settings.Name)

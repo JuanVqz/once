@@ -79,6 +79,8 @@ func (m SettingsFormEmail) Update(msg tea.Msg) (SettingsSection, tea.Cmd) {
 	return m, cmd
 }
 
+func (m SettingsFormEmail) StatusLine() string { return "" }
+
 func (m SettingsFormEmail) View() string {
 	return m.form.View()
 }

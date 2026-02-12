@@ -220,7 +220,9 @@ func (a *Application) Start(ctx context.Context) error {
 }
 
 func (a *Application) Update(ctx context.Context, progress DeployProgressCallback) error {
-	return a.Deploy(ctx, progress)
+	err := a.Deploy(ctx, progress)
+	a.saveOperationResult(ctx, func(s *State) { s.RecordUpdate(a.Settings.Name, err) })
+	return err
 }
 
 func (a *Application) Deploy(ctx context.Context, progress DeployProgressCallback) error {
@@ -282,7 +284,9 @@ func (a *Application) BackupToFile(ctx context.Context, dir string, name string)
 	}
 	defer file.Close()
 
-	return a.backupToWriter(ctx, file)
+	backupErr := a.backupToWriter(ctx, file)
+	a.saveOperationResult(ctx, func(s *State) { s.RecordBackup(a.Settings.Name, backupErr) })
+	return backupErr
 }
 
 func (a *Application) VerifyHTTP(ctx context.Context) error {
@@ -344,6 +348,15 @@ func (a *Application) Destroy(ctx context.Context, destroyVolumes bool) error {
 }
 
 // Private
+
+func (a *Application) saveOperationResult(ctx context.Context, record func(*State)) {
+	state, err := a.namespace.LoadState(ctx)
+	if err != nil {
+		return
+	}
+	record(state)
+	a.namespace.SaveState(ctx, state)
+}
 
 func (a *Application) backupToWriter(ctx context.Context, w io.Writer) error {
 	containerName, err := a.ContainerName(ctx)

@@ -42,6 +42,8 @@ func (m SettingsFormEnvironment) Update(msg tea.Msg) (SettingsSection, tea.Cmd) 
 	return m, cmd
 }
 
+func (m SettingsFormEnvironment) StatusLine() string { return "" }
+
 func (m SettingsFormEnvironment) View() string {
 	placeholder := lipgloss.NewStyle().
 		Foreground(Colors.Border).
