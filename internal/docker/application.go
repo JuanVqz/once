@@ -37,6 +37,10 @@ var (
 
 const BackupDataDir = "data"
 
+// AppVolumeMountTargets defines the paths where the app data volume is mounted
+// inside the container. The first entry is the primary path used for backups.
+var AppVolumeMountTargets = []string{"/storage", "/rails/storage"}
+
 type SMTPSettings struct {
 	Server   string `json:"s,omitempty"`
 	Port     string `json:"p,omitempty"`
@@ -404,13 +408,13 @@ func (a *Application) backupToWriter(ctx context.Context, w io.Writer) error {
 		return fmt.Errorf("writing volume settings: %w", err)
 	}
 
-	reader, _, err := a.namespace.client.CopyFromContainer(ctx, containerName, "/rails/storage")
+	reader, _, err := a.namespace.client.CopyFromContainer(ctx, containerName, AppVolumeMountTargets[0])
 	if err != nil {
 		return fmt.Errorf("copying from container: %w", err)
 	}
 	defer reader.Close()
 
-	if err := copyTarEntriesWithPrefix(reader, tw, "storage", BackupDataDir); err != nil {
+	if err := copyTarEntriesWithPrefix(reader, tw, filepath.Base(AppVolumeMountTargets[0]), BackupDataDir); err != nil {
 		return fmt.Errorf("copying volume contents: %w", err)
 	}
 
@@ -465,21 +469,19 @@ func (a *Application) deployWithVolume(ctx context.Context, vol *ApplicationVolu
 
 	env := a.Settings.BuildEnv(vol.SecretKeyBase())
 
+	var mounts []mount.Mount
+	for _, target := range AppVolumeMountTargets {
+		mounts = append(mounts, mount.Mount{
+			Type:   mount.TypeVolume,
+			Source: vol.Name(),
+			Target: target,
+		})
+	}
+
 	hostConfig := &container.HostConfig{
 		RestartPolicy: container.RestartPolicy{Name: container.RestartPolicyAlways},
 		LogConfig:     ContainerLogConfig(),
-		Mounts: []mount.Mount{
-			{
-				Type:   mount.TypeVolume,
-				Source: vol.Name(),
-				Target: "/rails/storage",
-			},
-			{
-				Type:   mount.TypeVolume,
-				Source: vol.Name(),
-				Target: "/storage",
-			},
-		},
+		Mounts:        mounts,
 	}
 	hostConfig.Resources = container.Resources{
 		Memory:   int64(a.Settings.Resources.MemoryMB) * 1024 * 1024,
