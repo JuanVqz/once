@@ -137,12 +137,77 @@ func TestDashboardMouseClickWithScroll(t *testing.T) {
 	assert.Equal(t, 1, d.selectedIndex)
 }
 
+func TestPanelIndexAtYMixedHeights(t *testing.T) {
+	d := testDashboardMixed()
+	titleHeight := 1
+
+	runningSlot := PanelHeight + 2
+	stoppedSlot := StoppedPanelHeight + 2
+
+	// App 0 is running, starts at offset 0
+	idx, ok := d.panelIndexAtY(titleHeight)
+	require.True(t, ok)
+	assert.Equal(t, 0, idx)
+
+	// App 1 is stopped, starts at offset runningSlot
+	idx, ok = d.panelIndexAtY(titleHeight + runningSlot)
+	require.True(t, ok)
+	assert.Equal(t, 1, idx)
+
+	// App 2 is running, starts at offset runningSlot + stoppedSlot
+	idx, ok = d.panelIndexAtY(titleHeight + runningSlot + stoppedSlot)
+	require.True(t, ok)
+	assert.Equal(t, 2, idx)
+
+	// Beyond all panels
+	_, ok = d.panelIndexAtY(titleHeight + runningSlot*2 + stoppedSlot)
+	assert.False(t, ok)
+}
+
+func TestDashboardMouseClickMixedHeights(t *testing.T) {
+	d := testDashboardMixed()
+	d.width = 80
+	d.height = 40
+	d.updateViewportSize()
+	d.rebuildViewportContent()
+
+	titleHeight := 1
+	runningSlot := PanelHeight + 2
+	stoppedSlot := StoppedPanelHeight + 2
+
+	// Click on stopped app (index 1)
+	msg := tea.MouseClickMsg{X: 10, Y: titleHeight + runningSlot, Button: tea.MouseLeft}
+	result, _ := d.Update(msg)
+	d = result.(Dashboard)
+	assert.Equal(t, 1, d.selectedIndex)
+
+	// Click on second running app (index 2)
+	msg = tea.MouseClickMsg{X: 10, Y: titleHeight + runningSlot + stoppedSlot, Button: tea.MouseLeft}
+	result, _ = d.Update(msg)
+	d = result.(Dashboard)
+	assert.Equal(t, 2, d.selectedIndex)
+}
+
 // Helpers
+
+func testDashboardMixed() Dashboard {
+	apps := []*docker.Application{
+		{Running: true, Settings: docker.ApplicationSettings{Name: "running-0", Host: "r0.example.com"}},
+		{Running: false, Settings: docker.ApplicationSettings{Name: "stopped-1", Host: "s1.example.com"}},
+		{Running: true, Settings: docker.ApplicationSettings{Name: "running-2", Host: "r2.example.com"}},
+	}
+
+	scraper := metrics.NewMetricsScraper(metrics.ScraperSettings{})
+	dockerScraper := &docker.Scraper{}
+
+	return NewDashboard(nil, apps, 0, scraper, dockerScraper)
+}
 
 func testDashboard(numApps int) Dashboard {
 	apps := make([]*docker.Application, numApps)
 	for i := range numApps {
 		apps[i] = &docker.Application{
+			Running: true,
 			Settings: docker.ApplicationSettings{
 				Name: fmt.Sprintf("app-%d", i),
 				Host: fmt.Sprintf("app-%d.example.com", i),

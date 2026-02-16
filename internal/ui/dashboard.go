@@ -14,6 +14,7 @@ import (
 )
 
 const PanelHeight = 7
+const StoppedPanelHeight = 2
 
 type dashboardKeyMap struct {
 	Up        key.Binding
@@ -312,9 +313,11 @@ func (m *Dashboard) rebuildViewportContent() {
 }
 
 func (m *Dashboard) scrollToSelection() {
-	slotHeight := PanelHeight + 2 // body + top/bottom transition lines
-	panelTop := m.selectedIndex * slotHeight
-	panelBottom := panelTop + slotHeight
+	panelTop := 0
+	for i := range m.selectedIndex {
+		panelTop += slotHeightFor(m.apps[i])
+	}
+	panelBottom := panelTop + slotHeightFor(m.apps[m.selectedIndex])
 	if panelTop < m.viewport.YOffset() {
 		m.viewport.SetYOffset(panelTop)
 	} else if panelBottom > m.viewport.YOffset()+m.viewport.Height() {
@@ -328,12 +331,22 @@ func (m *Dashboard) panelIndexAtY(y int) (int, bool) {
 	if contentY < 0 {
 		return 0, false
 	}
-	slotHeight := PanelHeight + 2
-	idx := contentY / slotHeight
-	if idx >= len(m.apps) {
-		return 0, false
+	offset := 0
+	for i, app := range m.apps {
+		h := slotHeightFor(app)
+		if contentY < offset+h {
+			return i, true
+		}
+		offset += h
 	}
-	return idx, true
+	return 0, false
+}
+
+func slotHeightFor(app *docker.Application) int {
+	if app.Running {
+		return PanelHeight + 2
+	}
+	return StoppedPanelHeight + 2
 }
 
 func (m *Dashboard) buildPanels() {

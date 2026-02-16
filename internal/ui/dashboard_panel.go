@@ -82,10 +82,15 @@ func (p DashboardPanel) View(selected bool, toggling bool, width int) string {
 
 	content := lipgloss.JoinVertical(lipgloss.Left, lines...)
 
+	height := PanelHeight
+	if !p.app.Running {
+		height = StoppedPanelHeight
+	}
+
 	bodyStyle := lipgloss.NewStyle().
 		Width(width - 1).
 		Padding(0, 1).
-		Height(PanelHeight)
+		Height(height)
 
 	var body string
 	if selected {
@@ -123,7 +128,11 @@ func (p DashboardPanel) renderBottomTransition(selected bool, width int) string 
 }
 
 func (p DashboardPanel) renderIndicator(selected bool) string {
-	rows := make([]string, PanelHeight)
+	height := PanelHeight
+	if !p.app.Running {
+		height = StoppedPanelHeight
+	}
+	rows := make([]string, height)
 	if selected {
 		line := lipgloss.NewStyle().Foreground(Colors.Focused).Render("▐")
 		for i := range rows {
