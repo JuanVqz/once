@@ -1,6 +1,7 @@
 package main
 
 import (
+	"embed"
 	"log/slog"
 	"net/http"
 	"os"
@@ -8,6 +9,9 @@ import (
 	"text/template"
 	"time"
 )
+
+//go:embed templates/*
+var templateFS embed.FS
 
 type InstalScriptArgs struct {
 	ImageRef string
@@ -71,7 +75,7 @@ func newInstallScriptHandler(template *template.Template) http.HandlerFunc {
 }
 
 func main() {
-	template, err := template.ParseGlob("templates/*")
+	template, err := template.ParseFS(templateFS, "templates/*")
 	if err != nil {
 		panic(err)
 	}

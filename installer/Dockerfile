@@ -13,7 +13,6 @@ RUN CGO_ENABLED=0 go build -trimpath -o installer .
 FROM scratch
 
 COPY --from=builder /app/installer /installer
-COPY --from=builder /app/templates /templates
 
 EXPOSE 80
 
