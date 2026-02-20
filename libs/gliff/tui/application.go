@@ -99,7 +99,7 @@ func (a *Application) handleInputEvents(msgs chan<- Msg) (stop func()) {
 func (a *Application) initializeComponent(s screen, msgs chan Msg, width, height int) {
 	a.runCmd(a.component.Init(), msgs)
 	a.runCmd(a.component.Update(WindowSizeMsg{Width: width, Height: height}), msgs)
-	s.Render(a.mouseTracker.Sweep(a.component.Render()))
+	a.renderComponent(s)
 }
 
 func (a *Application) eventLoop(s screen, msgs chan Msg) error {
@@ -120,19 +120,24 @@ func (a *Application) eventLoop(s screen, msgs chan Msg) error {
 		}
 
 		cmd := a.component.Update(msg)
-		s.Render(a.mouseTracker.Sweep(a.component.Render()))
+
+		a.renderComponent(s)
 		a.runCmd(cmd, msgs)
 	}
+
 	return nil
 }
 
 func (a *Application) runCmd(cmd Cmd, msgs chan<- Msg) {
-	if cmd == nil {
-		return
+	if cmd != nil {
+		go func() {
+			if msg := cmd(); msg != nil {
+				msgs <- msg
+			}
+		}()
 	}
-	go func() {
-		if msg := cmd(); msg != nil {
-			msgs <- msg
-		}
-	}()
+}
+
+func (a *Application) renderComponent(s screen) {
+	s.Render(a.mouseTracker.Sweep(a.component.Render()))
 }
