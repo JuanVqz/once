@@ -28,6 +28,8 @@ func TestLexer(t *testing.T) {
 		tok = l.Next()
 		assert.Equal(t, CSIToken, tok.Type)
 		assert.Equal(t, "\x1b[31m", tok.Text)
+		assert.Equal(t, "31", tok.Params)
+		assert.Equal(t, byte('m'), tok.Final)
 
 		tok = l.Next()
 		assert.Equal(t, TextToken, tok.Type)
@@ -36,6 +38,8 @@ func TestLexer(t *testing.T) {
 		tok = l.Next()
 		assert.Equal(t, CSIToken, tok.Type)
 		assert.Equal(t, "\x1b[0m", tok.Text)
+		assert.Equal(t, "0", tok.Params)
+		assert.Equal(t, byte('m'), tok.Final)
 
 		tok = l.Next()
 		assert.Equal(t, TextToken, tok.Type)
@@ -51,10 +55,14 @@ func TestLexer(t *testing.T) {
 		tok := l.Next()
 		assert.Equal(t, CSIToken, tok.Type)
 		assert.Equal(t, "\x1b[1;31m", tok.Text)
+		assert.Equal(t, "1;31", tok.Params)
+		assert.Equal(t, byte('m'), tok.Final)
 
 		tok = l.Next()
 		assert.Equal(t, CSIToken, tok.Type)
 		assert.Equal(t, "\x1b[44m", tok.Text)
+		assert.Equal(t, "44", tok.Params)
+		assert.Equal(t, byte('m'), tok.Final)
 
 		tok = l.Next()
 		assert.Equal(t, TextToken, tok.Type)
@@ -73,9 +81,21 @@ func TestLexer(t *testing.T) {
 		tok := l.Next()
 		assert.Equal(t, CSIToken, tok.Type)
 		assert.Equal(t, "\x1b[2J", tok.Text)
+		assert.Equal(t, "2", tok.Params)
+		assert.Equal(t, byte('J'), tok.Final)
 
 		tok = l.Next()
 		assert.Equal(t, EOFToken, tok.Type)
+	})
+
+	t.Run("CSINoParams", func(t *testing.T) {
+		l := NewLexer("\x1b[m")
+
+		tok := l.Next()
+		assert.Equal(t, CSIToken, tok.Type)
+		assert.Equal(t, "\x1b[m", tok.Text)
+		assert.Equal(t, "", tok.Params)
+		assert.Equal(t, byte('m'), tok.Final)
 	})
 
 	t.Run("ESCOnly", func(t *testing.T) {
@@ -95,77 +115,53 @@ func TestLexer(t *testing.T) {
 		tok := l.Next()
 		assert.Equal(t, ESCToken, tok.Type)
 		assert.Equal(t, "\x1bM", tok.Text)
+		assert.Equal(t, byte('M'), tok.Final)
 
 		tok = l.Next()
 		assert.Equal(t, EOFToken, tok.Type)
 	})
 }
 
-func TestParseCSI(t *testing.T) {
-	t.Run("SimpleSGR", func(t *testing.T) {
-		tok := Token{Type: CSIToken, Text: "\x1b[31m"}
-		params, final := ParseCSI(tok)
-		assert.Equal(t, "31", params)
-		assert.Equal(t, byte('m'), final)
-	})
-
-	t.Run("MultipleParams", func(t *testing.T) {
-		tok := Token{Type: CSIToken, Text: "\x1b[1;31;44m"}
-		params, final := ParseCSI(tok)
-		assert.Equal(t, "1;31;44", params)
-		assert.Equal(t, byte('m'), final)
-	})
-
-	t.Run("NoParams", func(t *testing.T) {
-		tok := Token{Type: CSIToken, Text: "\x1b[m"}
-		params, final := ParseCSI(tok)
-		assert.Equal(t, "", params)
-		assert.Equal(t, byte('m'), final)
-	})
-
-	t.Run("CursorMovement", func(t *testing.T) {
-		tok := Token{Type: CSIToken, Text: "\x1b[10;20H"}
-		params, final := ParseCSI(tok)
-		assert.Equal(t, "10;20", params)
-		assert.Equal(t, byte('H'), final)
-	})
-
-	t.Run("NotCSI", func(t *testing.T) {
-		tok := Token{Type: TextToken, Text: "hello"}
-		params, final := ParseCSI(tok)
-		assert.Equal(t, "", params)
-		assert.Equal(t, byte(0), final)
-	})
-}
-
-func TestParseSGRParams(t *testing.T) {
+func TestParseCSIParams(t *testing.T) {
 	t.Run("SingleParam", func(t *testing.T) {
-		params := ParseSGRParams("31")
+		params := ParseCSIParams("31", nil)
 		assert.Equal(t, []int{31}, params)
 	})
 
 	t.Run("MultipleParams", func(t *testing.T) {
-		params := ParseSGRParams("1;31;44")
+		params := ParseCSIParams("1;31;44", nil)
 		assert.Equal(t, []int{1, 31, 44}, params)
 	})
 
 	t.Run("Empty", func(t *testing.T) {
-		params := ParseSGRParams("")
+		params := ParseCSIParams("", nil)
 		assert.Equal(t, []int{0}, params)
 	})
 
 	t.Run("RGBColor", func(t *testing.T) {
-		params := ParseSGRParams("38;2;255;128;64")
+		params := ParseCSIParams("38;2;255;128;64", nil)
 		assert.Equal(t, []int{38, 2, 255, 128, 64}, params)
 	})
 
 	t.Run("256Color", func(t *testing.T) {
-		params := ParseSGRParams("38;5;196")
+		params := ParseCSIParams("38;5;196", nil)
 		assert.Equal(t, []int{38, 5, 196}, params)
 	})
 
 	t.Run("WithEmptyParts", func(t *testing.T) {
-		params := ParseSGRParams("1;;31")
+		params := ParseCSIParams("1;;31", nil)
 		assert.Equal(t, []int{1, 0, 31}, params)
 	})
+
+	t.Run("WithBuffer", func(t *testing.T) {
+		var buf [16]int
+		params := ParseCSIParams("1;31;44", buf[:])
+		assert.Equal(t, []int{1, 31, 44}, params)
+	})
+}
+
+func TestParseCSIParam(t *testing.T) {
+	assert.Equal(t, 0, ParseCSIParam(""))
+	assert.Equal(t, 42, ParseCSIParam("42"))
+	assert.Equal(t, 123, ParseCSIParam("123"))
 }

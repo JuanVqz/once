@@ -1,11 +1,13 @@
 package ansi
 
+import "strings"
+
 // Token represents a lexical token in an ANSI stream.
 type Token struct {
-	Type TokenType
-	Text string // The raw text of the token
-	// For CSIToken: contains the parameter bytes without the ESC [ prefix
-	// For TextToken: contains the literal text
+	Type   TokenType
+	Text   string // The raw text of the token
+	Params string // CSI: parameter bytes between ESC[ and final byte
+	Final  byte   // CSI: command byte; ESC: second byte
 }
 
 // TokenType identifies the kind of token.
@@ -25,8 +27,8 @@ type Lexer struct {
 }
 
 // NewLexer creates a new lexer for the given input.
-func NewLexer(input string) *Lexer {
-	return &Lexer{input: input}
+func NewLexer(input string) Lexer {
+	return Lexer{input: input}
 }
 
 // Next returns the next token from the input.
@@ -44,11 +46,64 @@ func (l *Lexer) Next() Token {
 	return l.readText()
 }
 
-// readText reads a run of non-escape characters.
+// ParseCSIParams parses semicolon/colon-separated integers from a CSI parameter string.
+// If buf is provided, it is reused to avoid allocation; results may exceed buf's capacity
+// via append if needed.
+func ParseCSIParams(s string, buf []int) []int {
+	params := buf[:0]
+
+	if s == "" {
+		return append(params, 0)
+	}
+
+	var current int
+	hasCurrent := false
+
+	for i := range len(s) {
+		b := s[i]
+		if b >= '0' && b <= '9' {
+			current = current*10 + int(b-'0')
+			hasCurrent = true
+		} else if b == ';' || b == ':' {
+			if hasCurrent {
+				params = append(params, current)
+			} else {
+				params = append(params, 0)
+			}
+			current = 0
+			hasCurrent = false
+		}
+	}
+
+	if hasCurrent {
+		params = append(params, current)
+	} else if len(params) == 0 {
+		params = append(params, 0)
+	}
+
+	return params
+}
+
+// ParseCSIParam parses a single integer from a CSI parameter string.
+func ParseCSIParam(s string) int {
+	n := 0
+	for i := range len(s) {
+		b := s[i]
+		if b >= '0' && b <= '9' {
+			n = n*10 + int(b-'0')
+		}
+	}
+	return n
+}
+
+// Private
+
 func (l *Lexer) readText() Token {
 	start := l.pos
-	for l.pos < len(l.input) && l.input[l.pos] != '\x1b' {
-		l.pos++
+	if i := strings.IndexByte(l.input[l.pos:], '\x1b'); i >= 0 {
+		l.pos += i
+	} else {
+		l.pos = len(l.input)
 	}
 	return Token{
 		Type: TextToken,
@@ -56,7 +111,6 @@ func (l *Lexer) readText() Token {
 	}
 }
 
-// readEscape reads an escape sequence starting with ESC.
 func (l *Lexer) readEscape() Token {
 	start := l.pos
 	l.pos++ // consume ESC
@@ -73,22 +127,23 @@ func (l *Lexer) readEscape() Token {
 	}
 
 	// Other escape sequence (ESC followed by single char)
+	final := l.input[l.pos]
 	l.pos++
 	return Token{
-		Type: ESCToken,
-		Text: l.input[start:l.pos],
+		Type:  ESCToken,
+		Text:  l.input[start:l.pos],
+		Final: final,
 	}
 }
 
-// readCSI reads a CSI sequence starting after ESC [.
 func (l *Lexer) readCSI(start int) Token {
 	l.pos++ // consume '['
+
+	paramStart := l.pos
 
 	// Read parameter bytes (0x30-0x3F) and intermediate bytes (0x20-0x2F)
 	for l.pos < len(l.input) {
 		b := l.input[l.pos]
-		// Parameter bytes: 0x30-0x3F (includes digits, semicolon, etc.)
-		// Intermediate bytes: 0x20-0x2F
 		if (b >= 0x30 && b <= 0x3F) || (b >= 0x20 && b <= 0x2F) {
 			l.pos++
 		} else {
@@ -96,76 +151,22 @@ func (l *Lexer) readCSI(start int) Token {
 		}
 	}
 
+	paramEnd := l.pos
+
 	// Read final byte (0x40-0x7E)
+	var final byte
 	if l.pos < len(l.input) {
 		b := l.input[l.pos]
 		if b >= 0x40 && b <= 0x7E {
+			final = b
 			l.pos++
 		}
 	}
 
 	return Token{
-		Type: CSIToken,
-		Text: l.input[start:l.pos],
+		Type:   CSIToken,
+		Text:   l.input[start:l.pos],
+		Params: l.input[paramStart:paramEnd],
+		Final:  final,
 	}
-}
-
-// ParseCSI extracts parameters from a CSI token.
-// Returns the parameter bytes (between ESC [ and final byte) and the final byte.
-func ParseCSI(token Token) (params string, final byte) {
-	if token.Type != CSIToken || len(token.Text) < 3 {
-		return "", 0
-	}
-
-	// Skip ESC [
-	text := token.Text[2:]
-	if len(text) == 0 {
-		return "", 0
-	}
-
-	// Last byte is the final byte
-	final = text[len(text)-1]
-
-	// Everything before final byte is parameters
-	if len(text) > 1 {
-		params = text[:len(text)-1]
-	}
-
-	return params, final
-}
-
-// ParseSGRParams parses SGR (Select Graphic Rendition) parameters from a string.
-// Returns a slice of integer parameters.
-func ParseSGRParams(s string) []int {
-	if s == "" {
-		return []int{0}
-	}
-
-	var params []int
-	var current int
-	hasCurrent := false
-
-	for _, b := range []byte(s) {
-		if b >= '0' && b <= '9' {
-			current = current*10 + int(b-'0')
-			hasCurrent = true
-		} else if b == ';' || b == ':' {
-			if hasCurrent {
-				params = append(params, current)
-			} else {
-				params = append(params, 0)
-			}
-			current = 0
-			hasCurrent = false
-		}
-		// Ignore other bytes (intermediate bytes, etc.)
-	}
-
-	if hasCurrent {
-		params = append(params, current)
-	} else if len(params) == 0 {
-		params = append(params, 0)
-	}
-
-	return params
 }

@@ -43,6 +43,8 @@ type parser struct {
 
 	// Current position
 	row, col int
+
+	paramBuf [16]int
 }
 
 // initCells initializes the cell buffer with empty cells.
@@ -70,7 +72,9 @@ func (p *parser) parse(content string) {
 		case ansi.TextToken:
 			p.handleText(tok.Text)
 		case ansi.CSIToken:
-			p.handleCSI(tok)
+			if tok.Final == 'm' {
+				p.handleSGR(ansi.ParseCSIParams(tok.Params, p.paramBuf[:]))
+			}
 		case ansi.ESCToken:
 			// Non-CSI escape sequences are ignored
 		}
@@ -100,16 +104,6 @@ func (p *parser) handleText(text string) {
 			// Control characters (except those handled above) are ignored
 		}
 	}
-}
-
-// handleCSI processes a CSI token.
-func (p *parser) handleCSI(tok ansi.Token) {
-	params, final := ansi.ParseCSI(tok)
-	if final == 'm' {
-		// SGR (Select Graphic Rendition)
-		p.handleSGR(ansi.ParseSGRParams(params))
-	}
-	// Other CSI sequences are ignored (cursor movement, etc. in input doesn't make sense)
 }
 
 // handleSGR processes SGR (Select Graphic Rendition) parameters.

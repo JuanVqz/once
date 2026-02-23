@@ -96,9 +96,8 @@ func (mt *MouseTracker) Sweep(content string) string {
 			}
 
 		case ansi.CSIToken:
-			params, final := ansi.ParseCSI(tok)
-			if final == 'z' {
-				id := parseCSIParam(params)
+			if tok.Final == 'z' {
+				id := ansi.ParseCSIParam(tok.Params)
 				if name, ok := mt.names[id]; ok {
 					if p, opened := open[id]; opened {
 						// Second marker: close the zone
@@ -144,14 +143,3 @@ func (mt *MouseTracker) Resolve(x, y int) string {
 	return ""
 }
 
-// Helpers
-
-func parseCSIParam(s string) int {
-	n := 0
-	for _, b := range []byte(s) {
-		if b >= '0' && b <= '9' {
-			n = n*10 + int(b-'0')
-		}
-	}
-	return n
-}
