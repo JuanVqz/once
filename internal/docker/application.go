@@ -29,6 +29,7 @@ import (
 
 var (
 	ErrApplicationExists  = errors.New("application already exists")
+	ErrHostnameInUse      = errors.New("hostname already in use")
 	ErrHostRequired       = errors.New("host is required")
 	ErrInvalidBackup      = errors.New("invalid backup archive")
 	ErrBackupPathRelative = errors.New("backup path must be absolute")

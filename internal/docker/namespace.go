@@ -80,6 +80,15 @@ func (n *Namespace) Applications() []*Application {
 	return n.applications
 }
 
+func (n *Namespace) HostInUse(host string) bool {
+	for _, app := range n.applications {
+		if app.Settings.Host == host {
+			return true
+		}
+	}
+	return false
+}
+
 func (n *Namespace) UniqueName(base string) (string, error) {
 	for {
 		id, err := randomID(6)
@@ -180,13 +189,15 @@ func (n *Namespace) Restore(ctx context.Context, r io.Reader) (*Application, err
 		return nil, fmt.Errorf("parsing backup: %w", err)
 	}
 
-	exists, err := n.ApplicationExists(ctx, appSettings.Name)
+	if n.HostInUse(appSettings.Host) {
+		return nil, ErrHostnameInUse
+	}
+
+	name, err := n.UniqueName(NameFromImageRef(appSettings.Image))
 	if err != nil {
-		return nil, fmt.Errorf("checking application exists: %w", err)
+		return nil, fmt.Errorf("generating app name: %w", err)
 	}
-	if exists {
-		return nil, ErrApplicationExists
-	}
+	appSettings.Name = name
 
 	app := n.AddApplication(appSettings)
 	if err := app.Restore(ctx, volSettings, volumeData); err != nil {

@@ -375,8 +375,9 @@ func TestRestore(t *testing.T) {
 	restoredApp, err := ns2.Restore(ctx, backupFile)
 	require.NoError(t, err)
 
-	// Verify settings were restored
-	assert.Equal(t, "restoreapp", restoredApp.Settings.Name)
+	// Verify the restored app gets a fresh unique name based on the image
+	assert.True(t, strings.HasPrefix(restoredApp.Settings.Name, "once-campfire."), "restored name should start with image base name")
+	assert.NotEqual(t, "restoreapp", restoredApp.Settings.Name)
 	assert.Equal(t, imageName, restoredApp.Settings.Image)
 	assert.Equal(t, "restore.localhost", restoredApp.Settings.Host)
 
@@ -394,10 +395,11 @@ func TestRestore(t *testing.T) {
 	})
 
 	// Verify that the app and volume are properly labelled by restoring the namespace
+	restoredName := restoredApp.Settings.Name
 	ns3, err := docker.RestoreNamespace(ctx, "once-restore-dst")
 	require.NoError(t, err)
 
-	restoredAppFromState := ns3.Application("restoreapp")
+	restoredAppFromState := ns3.Application(restoredName)
 	require.NotNil(t, restoredAppFromState, "app should be discoverable after restore")
 	assert.Equal(t, imageName, restoredAppFromState.Settings.Image)
 	assert.Equal(t, "restore.localhost", restoredAppFromState.Settings.Host)
@@ -407,11 +409,11 @@ func TestRestore(t *testing.T) {
 	assert.Equal(t, originalSecretKeyBase, volFromState.SecretKeyBase(), "volume SecretKeyBase should be preserved")
 }
 
-func TestRestoreExistingAppFails(t *testing.T) {
+func TestRestoreHostnameConflictFails(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	ns, err := docker.NewNamespace("once-restore-exists-test")
+	ns, err := docker.NewNamespace("once-restore-host-test")
 	require.NoError(t, err)
 	defer ns.Teardown(ctx, true)
 
@@ -429,13 +431,13 @@ func TestRestoreExistingAppFails(t *testing.T) {
 	backupDir := t.TempDir()
 	require.NoError(t, app.BackupToFile(ctx, backupDir, "backup.tar.gz"))
 
-	// Try to restore in the same namespace where the app already exists
+	// Try to restore when another app already uses the same hostname
 	backupFile, err := os.Open(filepath.Join(backupDir, "backup.tar.gz"))
 	require.NoError(t, err)
 	defer backupFile.Close()
 
 	_, err = ns.Restore(ctx, backupFile)
-	assert.ErrorIs(t, err, docker.ErrApplicationExists)
+	assert.ErrorIs(t, err, docker.ErrHostnameInUse)
 }
 
 func TestRemoveApplication(t *testing.T) {
