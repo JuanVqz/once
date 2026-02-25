@@ -49,15 +49,17 @@ func NewInstallForm(imageRef string) *InstallForm {
 		})
 	} else {
 		formItems = append(formItems, FormItem{
-			Label: "Image",
-			Field: NewTextField("user/repo:tag"),
+			Label:    "Image",
+			Field:    NewTextField("user/repo:tag"),
+			Required: true,
 		})
 	}
 
 	hostnameField := NewTextField("app.example.com")
 	formItems = append(formItems, FormItem{
-		Label: "Hostname",
-		Field: hostnameField,
+		Label:    "Hostname",
+		Field:    hostnameField,
+		Required: true,
 	})
 
 	m := &InstallForm{

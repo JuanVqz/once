@@ -35,8 +35,8 @@ func NewSettingsFormApplication(settings docker.ApplicationSettings) *SettingsFo
 	m := &SettingsFormApplication{
 		settings: settings,
 		form: NewForm("Done",
-			FormItem{Label: "Image", Field: imageField},
-			FormItem{Label: "Hostname", Field: hostnameField},
+			FormItem{Label: "Image", Field: imageField, Required: true},
+			FormItem{Label: "Hostname", Field: hostnameField, Required: true},
 			FormItem{Label: "TLS", Field: tlsField},
 		),
 	}

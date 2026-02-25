@@ -2,6 +2,7 @@ package ui
 
 import (
 	"strconv"
+	"strings"
 
 	"charm.land/lipgloss/v2"
 
@@ -16,6 +17,10 @@ type FormField interface {
 	Blur()
 	SetWidth(int)
 	IsFocusable() bool
+}
+
+type valuer interface {
+	Value() string
 }
 
 // TextField
@@ -178,8 +183,9 @@ type FormActionButton struct {
 // Form
 
 type FormItem struct {
-	Label string
-	Field FormField
+	Label    string
+	Field    FormField
+	Required bool
 }
 
 type Form struct {
@@ -188,6 +194,8 @@ type Form struct {
 	actionButton *FormActionButton
 	focused      int
 	width        int
+	errorField   int
+	error        string
 	onSubmit     func() tui.Cmd
 	onCancel     func() tui.Cmd
 }
@@ -242,6 +250,9 @@ func (f *Form) Update(msg tui.Msg) tui.Cmd {
 	}
 
 	if f.focused < len(f.items) {
+		if _, isKey := msg.(tui.KeyMsg); isKey {
+			f.clearErrorOnInput()
+		}
 		return f.items[f.focused].Field.Update(msg)
 	}
 
@@ -251,15 +262,24 @@ func (f *Form) Update(msg tui.Msg) tui.Cmd {
 func (f *Form) Render() string {
 	var parts []string
 
+	errorStyle := lipgloss.NewStyle().Foreground(Colors.Error)
+
 	for i, item := range f.items {
 		if _, isStatic := item.Field.(*StaticField); isStatic {
 			parts = append(parts, item.Field.Render())
 			continue
 		}
 		label := Styles.Label.Render(item.Label)
-		inputStyle := Styles.Focus(Styles.Input, f.focused == i)
+
+		hasError := f.error != "" && i == f.errorField
+		inputStyle := Styles.WithError(Styles.Focus(Styles.Input, f.focused == i), hasError)
 		field := tui.WithTarget(fieldTarget(i), inputStyle.Render(item.Field.Render()))
-		parts = append(parts, label, field, "")
+
+		if hasError {
+			parts = append(parts, label, field, errorStyle.Render(f.error), "")
+		} else {
+			parts = append(parts, label, field, "")
+		}
 	}
 
 	submitButton := tui.WithTarget("submit", Styles.Focus(Styles.ButtonPrimary, f.focused == f.submitIndex()).
@@ -309,6 +329,14 @@ func (f *Form) TextField(i int) *TextField {
 
 func (f *Form) CheckboxField(i int) *CheckboxField {
 	return f.items[i].Field.(*CheckboxField)
+}
+
+func (f *Form) HasError() bool {
+	return f.error != ""
+}
+
+func (f *Form) Error() string {
+	return f.error
 }
 
 // Private
@@ -363,10 +391,7 @@ func (f *Form) handleEnter() tui.Cmd {
 	case f.actionButton != nil && f.focused == f.actionIndex():
 		return func() tui.Msg { return f.actionButton.OnPress() }
 	case f.focused == f.submitIndex():
-		if f.onSubmit != nil {
-			return f.onSubmit()
-		}
-		return nil
+		return f.submitIfValid()
 	case f.focused == f.cancelIndex():
 		if f.onCancel != nil {
 			return f.onCancel()
@@ -394,9 +419,7 @@ func (f *Form) handleClick(target string) tui.Cmd {
 	case "submit":
 		f.blurCurrent()
 		f.focused = f.submitIndex()
-		if f.onSubmit != nil {
-			return f.onSubmit()
-		}
+		return f.submitIfValid()
 	case "action":
 		if f.actionButton != nil {
 			f.blurCurrent()
@@ -412,6 +435,41 @@ func (f *Form) handleClick(target string) tui.Cmd {
 	}
 
 	return nil
+}
+
+func (f *Form) clearErrorOnInput() {
+	if f.error != "" && f.focused == f.errorField {
+		f.error = ""
+	}
+}
+
+func (f *Form) submitIfValid() tui.Cmd {
+	if !f.validate() {
+		return f.focusIndex(f.errorField)
+	}
+	if f.onSubmit != nil {
+		return f.onSubmit()
+	}
+	return nil
+}
+
+func (f *Form) validate() bool {
+	f.error = ""
+
+	for i, item := range f.items {
+		if !item.Required || !item.Field.IsFocusable() {
+			continue
+		}
+		if v, ok := item.Field.(valuer); ok {
+			if strings.TrimSpace(v.Value()) == "" {
+				f.errorField = i
+				f.error = item.Label + " is required"
+				return false
+			}
+		}
+	}
+
+	return true
 }
 
 func (f *Form) focusIndex(i int) tui.Cmd {

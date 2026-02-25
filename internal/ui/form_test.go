@@ -165,6 +165,128 @@ func TestForm_FieldValuesAccessible(t *testing.T) {
 	assert.Equal(t, "hello", form.TextField(0).Value())
 }
 
+func TestForm_ValidationBlocksSubmitWhenRequiredEmpty(t *testing.T) {
+	form := NewForm("Submit",
+		FormItem{Label: "Name", Field: NewTextField("name"), Required: true},
+	)
+	submitted := false
+	form.OnSubmit(func() tui.Cmd {
+		submitted = true
+		return nil
+	})
+
+	formFocusSubmit(form)
+	formPressEnter(form)
+
+	assert.False(t, submitted)
+	assert.True(t, form.HasError())
+	assert.Equal(t, "Name is required", form.Error())
+}
+
+func TestForm_ValidationAllowsSubmitWhenRequiredFilled(t *testing.T) {
+	form := NewForm("Submit",
+		FormItem{Label: "Name", Field: NewTextField("name"), Required: true},
+	)
+	submitted := false
+	form.OnSubmit(func() tui.Cmd {
+		submitted = true
+		return nil
+	})
+
+	formTypeText(form, "hello")
+	formFocusSubmit(form)
+	formPressEnter(form)
+
+	assert.True(t, submitted)
+	assert.False(t, form.HasError())
+}
+
+func TestForm_ValidationTreatsWhitespaceAsEmpty(t *testing.T) {
+	form := NewForm("Submit",
+		FormItem{Label: "Name", Field: NewTextField("name"), Required: true},
+	)
+	submitted := false
+	form.OnSubmit(func() tui.Cmd {
+		submitted = true
+		return nil
+	})
+
+	formTypeText(form, "   ")
+	formFocusSubmit(form)
+	formPressEnter(form)
+
+	assert.False(t, submitted)
+	assert.Equal(t, "Name is required", form.Error())
+}
+
+func TestForm_ValidationErrorClearsOnInput(t *testing.T) {
+	form := NewForm("Submit",
+		FormItem{Label: "Name", Field: NewTextField("name"), Required: true},
+	)
+	form.OnSubmit(func() tui.Cmd { return nil })
+
+	formFocusSubmit(form)
+	formPressEnter(form)
+
+	assert.True(t, form.HasError())
+	assert.Equal(t, 0, form.Focused())
+
+	formTypeText(form, "x")
+
+	assert.False(t, form.HasError())
+}
+
+func TestForm_ValidationNonRequiredDoesNotBlock(t *testing.T) {
+	form := NewForm("Submit",
+		FormItem{Label: "Optional", Field: NewTextField("opt")},
+		FormItem{Label: "Required", Field: NewTextField("req"), Required: true},
+	)
+	submitted := false
+	form.OnSubmit(func() tui.Cmd {
+		submitted = true
+		return nil
+	})
+
+	formPressTab(form) // focus second field
+	formTypeText(form, "filled")
+	formFocusSubmit(form)
+	formPressEnter(form)
+
+	assert.True(t, submitted)
+	assert.False(t, form.HasError())
+}
+
+func TestForm_ValidationOnClickSubmit(t *testing.T) {
+	form := NewForm("Submit",
+		FormItem{Label: "Name", Field: NewTextField("name"), Required: true},
+	)
+	submitted := false
+	form.OnSubmit(func() tui.Cmd {
+		submitted = true
+		return nil
+	})
+
+	formClickSubmit(form)
+
+	assert.False(t, submitted)
+	assert.True(t, form.HasError())
+}
+
+func TestForm_ValidationFocusesFirstError(t *testing.T) {
+	form := NewForm("Submit",
+		FormItem{Label: "First", Field: NewTextField("first")},
+		FormItem{Label: "Second", Field: NewTextField("second"), Required: true},
+		FormItem{Label: "Third", Field: NewTextField("third"), Required: true},
+	)
+	form.OnSubmit(func() tui.Cmd { return nil })
+
+	formFocusSubmit(form)
+	formPressEnter(form)
+
+	assert.Equal(t, 1, form.Focused(), "focused on first errored field")
+	assert.Equal(t, "Second is required", form.Error())
+}
+
 // Helpers
 
 func keyMsg(keyType tui.KeyType, r rune) tui.KeyMsg {
@@ -191,4 +313,14 @@ func formTypeText(form *Form, text string) {
 	for _, r := range text {
 		form.Update(runeMsg(r))
 	}
+}
+
+func formFocusSubmit(form *Form) {
+	for form.Focused() != form.submitIndex() {
+		formPressTab(form)
+	}
+}
+
+func formClickSubmit(form *Form) {
+	form.Update(tui.MouseMsg{Type: tui.MousePress, Button: tui.MouseLeft, Target: "submit"})
 }

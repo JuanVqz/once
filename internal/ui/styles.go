@@ -81,6 +81,13 @@ func (s styles) Focus(base lipgloss.Style, focused bool) lipgloss.Style {
 	return base
 }
 
+func (s styles) WithError(base lipgloss.Style, hasError bool) lipgloss.Style {
+	if hasError {
+		return base.BorderForeground(Colors.Error)
+	}
+	return base
+}
+
 func (s styles) TitleRule(width int, crumbs ...string) string {
 	label := " " + strings.Join(append([]string{"ONCE"}, crumbs...), " · ") + " "
 	ruleWidth := max(width-2, len(label)) // subtract end caps
