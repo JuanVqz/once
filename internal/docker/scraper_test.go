@@ -67,7 +67,7 @@ func TestScraperFetch(t *testing.T) {
 	s := newTestScraper(nil)
 
 	for i := range 3 {
-		s.recordSample("myapp", Sample{
+		addSample(s,"myapp", Sample{
 			Timestamp:   time.Now(),
 			CPUPercent:  float64(i + 1),
 			MemoryBytes: uint64((i + 1) * 1000),
@@ -84,7 +84,7 @@ func TestScraperFetchWithLimit(t *testing.T) {
 	s := newTestScraper(nil)
 
 	for i := range 5 {
-		s.recordSample("myapp", Sample{CPUPercent: float64(i + 1)})
+		addSample(s,"myapp", Sample{CPUPercent: float64(i + 1)})
 	}
 
 	samples := s.Fetch("myapp", 2)
@@ -105,7 +105,7 @@ func TestScraperRingBufferWrap(t *testing.T) {
 	}
 
 	for i := range 5 {
-		s.recordSample("myapp", Sample{CPUPercent: float64(i + 1)})
+		addSample(s,"myapp", Sample{CPUPercent: float64(i + 1)})
 	}
 
 	samples := s.Fetch("myapp", 10)
@@ -269,6 +269,25 @@ func TestCalculateCPUPercentZeroDelta(t *testing.T) {
 }
 
 // Helpers
+
+func addSample(s *Scraper, appName string, sample Sample) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	data, ok := s.apps[appName]
+	if !ok {
+		data = &appData{
+			samples: make([]Sample, s.settings.BufferSize),
+		}
+		s.apps[appName] = data
+	}
+
+	data.samples[data.head] = sample
+	data.head = (data.head + 1) % len(data.samples)
+	if data.count < len(data.samples) {
+		data.count++
+	}
+}
 
 // scrapeUntil polls Scrape + Fetch until the expected CPU value appears.
 // The delivered channel signals that the stream goroutine has started reading,

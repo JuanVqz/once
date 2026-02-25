@@ -35,7 +35,7 @@ func newTestLogs() *Logs {
 }
 
 func newTestLogStreamerForUI() *docker.LogStreamer {
-	return docker.NewLogStreamerForTest(docker.LogStreamerSettings{})
+	return docker.NewLogStreamer(nil, docker.LogStreamerSettings{})
 }
 
 func TestLogsFilterActivation(t *testing.T) {

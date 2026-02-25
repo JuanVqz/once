@@ -120,7 +120,7 @@ func (m *Remove) View() string {
 	var helpLine string
 	if !m.removing {
 		helpView := m.help.View([]key.Binding{removeKeys.Back})
-		helpLine = Styles.HelpLine(m.width, helpView)
+		helpLine = Styles.CenteredLine(m.width, helpView)
 	}
 
 	titleHeight := 2 // title + blank line

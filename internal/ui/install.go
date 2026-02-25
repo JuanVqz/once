@@ -95,6 +95,7 @@ func (m *Install) Update(msg tea.Msg) tea.Cmd {
 
 	case InstallActivityFailedMsg:
 		m.state = installStateForm
+		m.activity = nil
 		m.err = msg.Err
 		return nil
 
@@ -129,7 +130,7 @@ func (m *Install) View() string {
 	var helpLine string
 	if m.state == installStateForm {
 		helpView := m.help.View([]key.Binding{installKeys.Back})
-		helpLine = Styles.HelpLine(m.width, helpView)
+		helpLine = Styles.CenteredLine(m.width, helpView)
 	}
 
 	middle := m.renderMiddle(contentView, m.middleHeight())
@@ -146,6 +147,9 @@ func (m *Install) middleHeight() int {
 }
 
 func (m *Install) cancelFromScreen() tea.Cmd {
+	if m.activity != nil {
+		m.activity.Cancel()
+	}
 	if m.cliMode {
 		return func() tea.Msg { return quitMsg{} }
 	}

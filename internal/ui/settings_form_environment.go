@@ -8,14 +8,28 @@ import (
 )
 
 type SettingsFormEnvironment struct {
-	settings docker.ApplicationSettings
-	form     *Form
+	settingsFormBase
 }
 
 func NewSettingsFormEnvironment(settings docker.ApplicationSettings) *SettingsFormEnvironment {
 	m := &SettingsFormEnvironment{
-		settings: settings,
-		form:     NewForm("Done"),
+		settingsFormBase: settingsFormBase{
+			title: "Environment",
+			form:  NewForm("Done"),
+		},
+	}
+
+	m.viewFn = func() string {
+		placeholder := lipgloss.NewStyle().
+			Foreground(Colors.Border).
+			Italic(true).
+			Render("(Environment variable editing coming soon)")
+
+		return lipgloss.JoinVertical(lipgloss.Left,
+			placeholder,
+			"",
+			m.form.View(),
+		)
 	}
 
 	m.form.OnSubmit(func() tea.Cmd {
@@ -26,31 +40,4 @@ func NewSettingsFormEnvironment(settings docker.ApplicationSettings) *SettingsFo
 	})
 
 	return m
-}
-
-func (m *SettingsFormEnvironment) Title() string {
-	return "Environment"
-}
-
-func (m *SettingsFormEnvironment) Init() tea.Cmd {
-	return m.form.Init()
-}
-
-func (m *SettingsFormEnvironment) Update(msg tea.Msg) tea.Cmd {
-	return m.form.Update(msg)
-}
-
-func (m *SettingsFormEnvironment) StatusLine() string { return "" }
-
-func (m *SettingsFormEnvironment) View() string {
-	placeholder := lipgloss.NewStyle().
-		Foreground(Colors.Border).
-		Italic(true).
-		Render("(Environment variable editing coming soon)")
-
-	return lipgloss.JoinVertical(lipgloss.Left,
-		placeholder,
-		"",
-		m.form.View(),
-	)
 }

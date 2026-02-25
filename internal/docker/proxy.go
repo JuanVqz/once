@@ -184,18 +184,22 @@ func (p *Proxy) LoadState(ctx context.Context) (*State, error) {
 
 	reader, _, err := p.namespace.client.CopyFromContainer(ctx, containerName, stateFilePath)
 	if err != nil {
-		return &State{}, nil
+		// Return empty state when the file doesn't exist yet (first boot)
+		if errdefs.IsNotFound(err) {
+			return &State{}, nil
+		}
+		return nil, fmt.Errorf("copying state from container: %w", err)
 	}
 	defer reader.Close()
 
 	tr := tar.NewReader(reader)
 	if _, err := tr.Next(); err != nil {
-		return &State{}, nil
+		return nil, fmt.Errorf("reading state tar: %w", err)
 	}
 
 	var state State
 	if err := json.NewDecoder(tr).Decode(&state); err != nil {
-		return &State{}, nil
+		return nil, fmt.Errorf("decoding state: %w", err)
 	}
 
 	return &state, nil

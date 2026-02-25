@@ -14,8 +14,8 @@ const (
 )
 
 type SettingsFormResources struct {
+	settingsFormBase
 	settings docker.ApplicationSettings
-	form     *Form
 }
 
 func NewSettingsFormResources(settings docker.ApplicationSettings) *SettingsFormResources {
@@ -34,11 +34,14 @@ func NewSettingsFormResources(settings docker.ApplicationSettings) *SettingsForm
 	}
 
 	m := &SettingsFormResources{
+		settingsFormBase: settingsFormBase{
+			title: "Resources",
+			form: NewForm("Done",
+				FormItem{Label: "CPU Limit", Field: cpuField},
+				FormItem{Label: "Memory Limit (MB)", Field: memoryField},
+			),
+		},
 		settings: settings,
-		form: NewForm("Done",
-			FormItem{Label: "CPU Limit", Field: cpuField},
-			FormItem{Label: "Memory Limit (MB)", Field: memoryField},
-		),
 	}
 
 	m.form.OnSubmit(func() tea.Cmd {
@@ -51,22 +54,4 @@ func NewSettingsFormResources(settings docker.ApplicationSettings) *SettingsForm
 	})
 
 	return m
-}
-
-func (m *SettingsFormResources) Title() string {
-	return "Resources"
-}
-
-func (m *SettingsFormResources) Init() tea.Cmd {
-	return m.form.Init()
-}
-
-func (m *SettingsFormResources) Update(msg tea.Msg) tea.Cmd {
-	return m.form.Update(msg)
-}
-
-func (m *SettingsFormResources) StatusLine() string { return "" }
-
-func (m *SettingsFormResources) View() string {
-	return m.form.View()
 }

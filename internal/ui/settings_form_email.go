@@ -15,8 +15,8 @@ const (
 )
 
 type SettingsFormEmail struct {
+	settingsFormBase
 	settings docker.ApplicationSettings
-	form     *Form
 }
 
 func NewSettingsFormEmail(settings docker.ApplicationSettings) *SettingsFormEmail {
@@ -38,14 +38,17 @@ func NewSettingsFormEmail(settings docker.ApplicationSettings) *SettingsFormEmai
 	fromField.SetValue(settings.SMTP.From)
 
 	m := &SettingsFormEmail{
+		settingsFormBase: settingsFormBase{
+			title: "Email",
+			form: NewForm("Done",
+				FormItem{Label: "SMTP Server", Field: serverField},
+				FormItem{Label: "SMTP Port", Field: portField},
+				FormItem{Label: "SMTP Username", Field: usernameField},
+				FormItem{Label: "SMTP Password", Field: passwordField},
+				FormItem{Label: "SMTP From", Field: fromField},
+			),
+		},
 		settings: settings,
-		form: NewForm("Done",
-			FormItem{Label: "SMTP Server", Field: serverField},
-			FormItem{Label: "SMTP Port", Field: portField},
-			FormItem{Label: "SMTP Username", Field: usernameField},
-			FormItem{Label: "SMTP Password", Field: passwordField},
-			FormItem{Label: "SMTP From", Field: fromField},
-		),
 	}
 
 	m.form.OnSubmit(func() tea.Cmd {
@@ -61,22 +64,4 @@ func NewSettingsFormEmail(settings docker.ApplicationSettings) *SettingsFormEmai
 	})
 
 	return m
-}
-
-func (m *SettingsFormEmail) Title() string {
-	return "Email"
-}
-
-func (m *SettingsFormEmail) Init() tea.Cmd {
-	return m.form.Init()
-}
-
-func (m *SettingsFormEmail) Update(msg tea.Msg) tea.Cmd {
-	return m.form.Update(msg)
-}
-
-func (m *SettingsFormEmail) StatusLine() string { return "" }
-
-func (m *SettingsFormEmail) View() string {
-	return m.form.View()
 }

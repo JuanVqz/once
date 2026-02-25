@@ -88,7 +88,7 @@ func (m *Menu) View() string {
 
 	lines := make([]string, len(m.items))
 	for i, item := range m.items {
-		padding := strings.Repeat(" ", m.padWidth-len(item.Label))
+		padding := strings.Repeat(" ", m.padWidth-lipgloss.Width(item.Label))
 		shortcutStr := item.Shortcut.Help().Key
 		styledKey := keyStyle.Render(shortcutStr)
 
@@ -109,8 +109,8 @@ func (m *Menu) View() string {
 func (m *Menu) measureItems() {
 	maxLen := 0
 	for _, item := range m.items {
-		if len(item.Label) > maxLen {
-			maxLen = len(item.Label)
+		if w := lipgloss.Width(item.Label); w > maxLen {
+			maxLen = w
 		}
 	}
 	m.padWidth = maxLen + 2

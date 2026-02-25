@@ -67,10 +67,13 @@ func (p DashboardPanel) View(selected bool, toggling bool, width int) string {
 			return baseWidth
 		}
 
-		cpuChart := p.cpuChart.View(p.fetchCPUData(), chartW(0), chartHeight)
-		memChart := p.memoryChart.View(p.fetchMemoryData(), chartW(1), chartHeight)
-		reqChart := p.requestChart.View(p.fetchRequestData(), chartW(2), chartHeight)
-		errChart := p.errorChart.View(p.fetchErrorData(), chartW(3), chartHeight)
+		cpuData, memData := p.fetchDockerData()
+		reqData, errData := p.fetchMetricsData()
+
+		cpuChart := p.cpuChart.View(cpuData, chartW(0), chartHeight)
+		memChart := p.memoryChart.View(memData, chartW(1), chartHeight)
+		reqChart := p.requestChart.View(reqData, chartW(2), chartHeight)
+		errChart := p.errorChart.View(errData, chartW(3), chartHeight)
 
 		chartsRow := lipgloss.JoinHorizontal(lipgloss.Top, cpuChart, " ", memChart, " ", reqChart, " ", errChart)
 		lines = append(lines, chartsRow)
@@ -103,8 +106,12 @@ func (p DashboardPanel) View(selected bool, toggling bool, width int) string {
 	return topTrans + "\n" + lipgloss.JoinHorizontal(lipgloss.Top, indicator, body) + "\n" + bottomTrans
 }
 
-func (p DashboardPanel) Height(selected bool, width int) int {
-	return lipgloss.Height(p.View(selected, false, width))
+func (p DashboardPanel) Height() int {
+	bodyHeight := PanelHeight
+	if !p.app.Running {
+		bodyHeight = StoppedPanelHeight
+	}
+	return bodyHeight + 2 // top + bottom transition lines
 }
 
 // Private
@@ -146,44 +153,30 @@ func (p DashboardPanel) renderIndicator(selected bool) string {
 	return strings.Join(rows, "\n")
 }
 
-func (p DashboardPanel) fetchCPUData() []float64 {
+func (p DashboardPanel) fetchDockerData() (cpu, memory []float64) {
 	samples := p.dockerScraper.Fetch(p.app.Settings.Name, ChartHistoryLength)
-	data := make([]float64, len(samples))
+	cpu = make([]float64, len(samples))
+	memory = make([]float64, len(samples))
 	for i, s := range samples {
-		data[i] = s.CPUPercent
+		cpu[i] = s.CPUPercent
+		memory[i] = float64(s.MemoryBytes)
 	}
-	slices.Reverse(data)
-	return data
+	slices.Reverse(cpu)
+	slices.Reverse(memory)
+	return
 }
 
-func (p DashboardPanel) fetchMemoryData() []float64 {
-	samples := p.dockerScraper.Fetch(p.app.Settings.Name, ChartHistoryLength)
-	data := make([]float64, len(samples))
-	for i, s := range samples {
-		data[i] = float64(s.MemoryBytes)
-	}
-	slices.Reverse(data)
-	return data
-}
-
-func (p DashboardPanel) fetchRequestData() []float64 {
+func (p DashboardPanel) fetchMetricsData() (requests, errors []float64) {
 	samples := p.scraper.Fetch(p.app.Settings.Name, ChartHistoryLength)
-	data := make([]float64, len(samples))
+	requests = make([]float64, len(samples))
+	errors = make([]float64, len(samples))
 	for i, s := range samples {
-		data[i] = float64(s.Success + s.ClientErrors + s.ServerErrors)
+		requests[i] = float64(s.Success + s.ClientErrors + s.ServerErrors)
+		errors[i] = float64(s.ServerErrors)
 	}
-	slices.Reverse(data)
-	return SlidingSum(data, ChartSlidingWindow)
-}
-
-func (p DashboardPanel) fetchErrorData() []float64 {
-	samples := p.scraper.Fetch(p.app.Settings.Name, ChartHistoryLength)
-	data := make([]float64, len(samples))
-	for i, s := range samples {
-		data[i] = float64(s.ServerErrors)
-	}
-	slices.Reverse(data)
-	return SlidingSum(data, ChartSlidingWindow)
+	slices.Reverse(requests)
+	slices.Reverse(errors)
+	return SlidingSum(requests, ChartSlidingWindow), SlidingSum(errors, ChartSlidingWindow)
 }
 
 // Helpers

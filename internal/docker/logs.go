@@ -49,17 +49,13 @@ type LogStreamer struct {
 
 func NewLogStreamer(ns *Namespace, settings LogStreamerSettings) *LogStreamer {
 	settings = settings.withDefaults()
-	return &LogStreamer{
-		settings: settings,
-		client:   ns.client,
-		lines:    make([]LogLine, settings.BufferSize),
+	var client logsClient
+	if ns != nil {
+		client = ns.client
 	}
-}
-
-func NewLogStreamerForTest(settings LogStreamerSettings) *LogStreamer {
-	settings = settings.withDefaults()
 	return &LogStreamer{
 		settings: settings,
+		client:   client,
 		lines:    make([]LogLine, settings.BufferSize),
 	}
 }

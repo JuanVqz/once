@@ -90,15 +90,12 @@ func (s styles) WithError(base lipgloss.Style, hasError bool) lipgloss.Style {
 
 func (s styles) TitleRule(width int, crumbs ...string) string {
 	label := " " + strings.Join(append([]string{"ONCE"}, crumbs...), " · ") + " "
-	ruleWidth := max(width-2, len(label)) // subtract end caps
-	side := (ruleWidth - len(label)) / 2
-	remainder := ruleWidth - len(label) - side*2
+	labelWidth := lipgloss.Width(label)
+	ruleWidth := max(width-2, labelWidth) // subtract end caps
+	side := (ruleWidth - labelWidth) / 2
+	remainder := ruleWidth - labelWidth - side*2
 	line := "╶" + strings.Repeat("─", side) + label + strings.Repeat("─", side+remainder) + "╴"
 	return lipgloss.NewStyle().Foreground(Colors.Border).Render(line)
-}
-
-func (s styles) HelpLine(width int, content string) string {
-	return lipgloss.NewStyle().Width(width).Align(lipgloss.Center).Render(content)
 }
 
 func (s styles) CenteredLine(width int, content string) string {

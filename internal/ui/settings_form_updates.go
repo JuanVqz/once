@@ -11,22 +11,25 @@ import (
 const updatesAutoUpdateField = 0
 
 type SettingsFormUpdates struct {
-	app        *docker.Application
-	settings   docker.ApplicationSettings
-	form       *Form
-	lastResult *docker.OperationResult
+	settingsFormBase
+	settings docker.ApplicationSettings
 }
 
 func NewSettingsFormUpdates(app *docker.Application, lastResult *docker.OperationResult) *SettingsFormUpdates {
 	autoUpdateField := NewCheckboxField("Automatically apply updates", app.Settings.AutoUpdate)
 
 	m := &SettingsFormUpdates{
-		app:      app,
+		settingsFormBase: settingsFormBase{
+			title: "Updates",
+			form: NewForm("Done",
+				FormItem{Label: "Updates", Field: autoUpdateField},
+			),
+		},
 		settings: app.Settings,
-		form: NewForm("Done",
-			FormItem{Label: "Updates", Field: autoUpdateField},
-		),
-		lastResult: lastResult,
+	}
+
+	m.statusLine = func() string {
+		return formatOperationStatus("checked", lastResult)
 	}
 
 	m.form.SetActionButton("Check for updates", func() tea.Msg {
@@ -50,24 +53,4 @@ func NewSettingsFormUpdates(app *docker.Application, lastResult *docker.Operatio
 	})
 
 	return m
-}
-
-func (m *SettingsFormUpdates) Title() string {
-	return "Updates"
-}
-
-func (m *SettingsFormUpdates) Init() tea.Cmd {
-	return m.form.Init()
-}
-
-func (m *SettingsFormUpdates) Update(msg tea.Msg) tea.Cmd {
-	return m.form.Update(msg)
-}
-
-func (m *SettingsFormUpdates) View() string {
-	return m.form.View()
-}
-
-func (m *SettingsFormUpdates) StatusLine() string {
-	return formatOperationStatus("checked", m.lastResult)
 }

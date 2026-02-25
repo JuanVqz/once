@@ -251,25 +251,6 @@ func (s *Scraper) setError(err error) {
 	s.lastError = err
 }
 
-func (s *Scraper) recordSample(appName string, sample Sample) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	data, ok := s.apps[appName]
-	if !ok {
-		data = &appData{
-			samples: make([]Sample, s.settings.BufferSize),
-		}
-		s.apps[appName] = data
-	}
-
-	data.samples[data.head] = sample
-	data.head = (data.head + 1) % len(data.samples)
-	if data.count < len(data.samples) {
-		data.count++
-	}
-}
-
 // Helpers
 
 func calculateCPUPercent(stats *container.StatsResponse) float64 {

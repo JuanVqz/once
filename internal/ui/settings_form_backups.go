@@ -14,10 +14,8 @@ const (
 )
 
 type SettingsFormBackups struct {
-	app        *docker.Application
-	settings   docker.ApplicationSettings
-	form       *Form
-	lastResult *docker.OperationResult
+	settingsFormBase
+	settings docker.ApplicationSettings
 }
 
 func NewSettingsFormBackups(app *docker.Application, lastResult *docker.OperationResult) *SettingsFormBackups {
@@ -27,13 +25,18 @@ func NewSettingsFormBackups(app *docker.Application, lastResult *docker.Operatio
 	autoBackField := NewCheckboxField("Automatically create backups", app.Settings.Backup.AutoBack)
 
 	m := &SettingsFormBackups{
-		app:      app,
+		settingsFormBase: settingsFormBase{
+			title: "Backups",
+			form: NewForm("Done",
+				FormItem{Label: "Backup location", Field: pathField},
+				FormItem{Label: "Backups", Field: autoBackField},
+			),
+		},
 		settings: app.Settings,
-		form: NewForm("Done",
-			FormItem{Label: "Backup location", Field: pathField},
-			FormItem{Label: "Backups", Field: autoBackField},
-		),
-		lastResult: lastResult,
+	}
+
+	m.statusLine = func() string {
+		return formatOperationStatus("backup", lastResult)
 	}
 
 	m.form.SetActionButton("Run backup now", func() tea.Msg {
@@ -51,26 +54,6 @@ func NewSettingsFormBackups(app *docker.Application, lastResult *docker.Operatio
 	})
 
 	return m
-}
-
-func (m *SettingsFormBackups) Title() string {
-	return "Backups"
-}
-
-func (m *SettingsFormBackups) Init() tea.Cmd {
-	return m.form.Init()
-}
-
-func (m *SettingsFormBackups) Update(msg tea.Msg) tea.Cmd {
-	return m.form.Update(msg)
-}
-
-func (m *SettingsFormBackups) View() string {
-	return m.form.View()
-}
-
-func (m *SettingsFormBackups) StatusLine() string {
-	return formatOperationStatus("backup", m.lastResult)
 }
 
 // Helpers

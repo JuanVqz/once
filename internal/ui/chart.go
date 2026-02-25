@@ -104,7 +104,7 @@ func (c Chart) View(data []float64, width, height int) string {
 
 	// Format labels and calculate label width
 	maxLabel := c.unit.Format(displayMax)
-	labelWidth := max(len(maxLabel), 1)
+	labelWidth := max(lipgloss.Width(maxLabel), 1)
 	chartWidth := innerWidth - labelWidth - 1 // -1 for space between label and chart
 
 	if chartWidth <= 0 {

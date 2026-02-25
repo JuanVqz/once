@@ -237,7 +237,7 @@ func (m *Dashboard) View() string {
 		helpBindings = []key.Binding{dashboardKeys.NewApp, dashboardKeys.Quit}
 	}
 	helpView := m.help.View(helpBindings)
-	helpLine := Styles.HelpLine(m.width, helpView)
+	helpLine := Styles.CenteredLine(m.width, helpView)
 
 	if len(m.apps) == 0 {
 		emptyMsg := lipgloss.NewStyle().Foreground(Colors.Border).Render("There are no applications installed")
@@ -302,9 +302,9 @@ func (m *Dashboard) rebuildViewportContent() {
 func (m *Dashboard) scrollToSelection() {
 	panelTop := 0
 	for i := range m.selectedIndex {
-		panelTop += m.panels[i].Height(i == m.selectedIndex, m.width)
+		panelTop += m.panels[i].Height()
 	}
-	panelBottom := panelTop + m.panels[m.selectedIndex].Height(true, m.width)
+	panelBottom := panelTop + m.panels[m.selectedIndex].Height()
 	if panelTop < m.viewport.YOffset() {
 		m.viewport.SetYOffset(panelTop)
 	} else if panelBottom > m.viewport.YOffset()+m.viewport.Height() {
@@ -322,7 +322,7 @@ func (m *Dashboard) panelIndexAtY(y int) (int, bool) {
 	contentRow := vpRow + m.viewport.YOffset()
 	top := 0
 	for i := range m.panels {
-		h := m.panels[i].Height(i == m.selectedIndex, m.width)
+		h := m.panels[i].Height()
 		if contentRow < top+h {
 			return i, true
 		}

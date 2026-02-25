@@ -70,7 +70,10 @@ type settingsRunActionMsg struct {
 }
 
 func NewSettings(ns *docker.Namespace, app *docker.Application, sectionType SettingsSectionType) *Settings {
-	state, _ := ns.LoadState(context.Background())
+	state, err := ns.LoadState(context.Background())
+	if err != nil {
+		state = &docker.State{}
+	}
 	appState := state.AppState(app.Settings.Name)
 
 	var section SettingsSection
@@ -223,7 +226,7 @@ func (m *Settings) View() string {
 	var helpLine string
 	if m.state == settingsStateForm {
 		helpView := m.help.View([]key.Binding{settingsKeys.Back})
-		helpLine = Styles.HelpLine(m.width, helpView)
+		helpLine = Styles.CenteredLine(m.width, helpView)
 	}
 
 	titleHeight := 2 // title + blank line

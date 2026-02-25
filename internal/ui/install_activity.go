@@ -49,6 +49,7 @@ type InstallActivity struct {
 	progressBusy  *ProgressBusy
 	progressChan  chan installProgressMsg
 	doneChan      chan installDoneMsg
+	cancel        context.CancelFunc
 }
 
 func NewInstallActivity(ns *docker.Namespace, imageRef, hostname string) *InstallActivity {
@@ -138,8 +139,16 @@ func (m *InstallActivity) View() string {
 
 func (m *InstallActivity) startInstall() tea.Cmd {
 	return func() tea.Msg {
-		go m.runInstall()
+		ctx, cancel := context.WithCancel(context.Background())
+		m.cancel = cancel
+		go m.runInstall(ctx)
 		return nil
+	}
+}
+
+func (m *InstallActivity) Cancel() {
+	if m.cancel != nil {
+		m.cancel()
 	}
 }
 
@@ -157,8 +166,12 @@ func (m *InstallActivity) waitForProgress() tea.Cmd {
 	}
 }
 
-func (m *InstallActivity) runInstall() {
-	ctx := context.Background()
+func (m *InstallActivity) runInstall(ctx context.Context) {
+	defer func() {
+		if r := recover(); r != nil {
+			m.doneChan <- installDoneMsg{err: fmt.Errorf("install panicked: %v", r)}
+		}
+	}()
 
 	m.progressChan <- installProgressMsg{stage: stagePreparing}
 

@@ -117,7 +117,7 @@ func (m *Logs) View() string {
 		helpBindings = append([]key.Binding{logsKeys.Filter}, helpBindings...)
 	}
 	helpView := m.help.View(helpBindings)
-	helpLine := Styles.HelpLine(m.width, helpView)
+	helpLine := Styles.CenteredLine(m.width, helpView)
 
 	header := titleLine + "\n"
 	if m.filterActive || m.filterText != "" {

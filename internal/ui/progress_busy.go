@@ -10,8 +10,8 @@ import (
 )
 
 type ProgressBusy struct {
-	Width int
-	Color color.Color
+	width int
+	color color.Color
 
 	pattern []rune
 }
@@ -20,8 +20,8 @@ type ProgressBusyTickMsg struct{}
 
 func NewProgressBusy(width int, clr color.Color) *ProgressBusy {
 	return &ProgressBusy{
-		Width:   width,
-		Color:   clr,
+		width:   width,
+		color:   clr,
 		pattern: generateBraillePattern(width),
 	}
 }
@@ -36,18 +36,18 @@ func (p *ProgressBusy) Init() tea.Cmd {
 func (p *ProgressBusy) Update(msg tea.Msg) tea.Cmd {
 	switch msg.(type) {
 	case ProgressBusyTickMsg:
-		p.pattern = generateBraillePattern(p.Width)
+		p.pattern = generateBraillePattern(p.width)
 		return p.tick()
 	}
 	return nil
 }
 
 func (p *ProgressBusy) View() string {
-	if p == nil || p.Width <= 0 {
+	if p == nil || p.width <= 0 {
 		return ""
 	}
 
-	return lipgloss.NewStyle().Foreground(p.Color).Render(string(p.pattern))
+	return lipgloss.NewStyle().Foreground(p.color).Render(string(p.pattern))
 }
 
 // Private

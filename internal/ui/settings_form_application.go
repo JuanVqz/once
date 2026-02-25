@@ -13,8 +13,8 @@ const (
 )
 
 type SettingsFormApplication struct {
+	settingsFormBase
 	settings docker.ApplicationSettings
-	form     *Form
 }
 
 func NewSettingsFormApplication(settings docker.ApplicationSettings) *SettingsFormApplication {
@@ -33,12 +33,15 @@ func NewSettingsFormApplication(settings docker.ApplicationSettings) *SettingsFo
 	})
 
 	m := &SettingsFormApplication{
+		settingsFormBase: settingsFormBase{
+			title: "Application",
+			form: NewForm("Done",
+				FormItem{Label: "Image", Field: imageField, Required: true},
+				FormItem{Label: "Hostname", Field: hostnameField, Required: true},
+				FormItem{Label: "TLS", Field: tlsField},
+			),
+		},
 		settings: settings,
-		form: NewForm("Done",
-			FormItem{Label: "Image", Field: imageField, Required: true},
-			FormItem{Label: "Hostname", Field: hostnameField, Required: true},
-			FormItem{Label: "TLS", Field: tlsField},
-		),
 	}
 
 	m.form.OnSubmit(func() tea.Cmd {
@@ -52,22 +55,4 @@ func NewSettingsFormApplication(settings docker.ApplicationSettings) *SettingsFo
 	})
 
 	return m
-}
-
-func (m *SettingsFormApplication) Title() string {
-	return "Application"
-}
-
-func (m *SettingsFormApplication) Init() tea.Cmd {
-	return m.form.Init()
-}
-
-func (m *SettingsFormApplication) Update(msg tea.Msg) tea.Cmd {
-	return m.form.Update(msg)
-}
-
-func (m *SettingsFormApplication) StatusLine() string { return "" }
-
-func (m *SettingsFormApplication) View() string {
-	return m.form.View()
 }
