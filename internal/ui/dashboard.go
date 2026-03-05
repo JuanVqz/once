@@ -24,6 +24,7 @@ var dashboardKeys = struct {
 	Actions  key.Binding
 	NewApp   key.Binding
 	Logs     key.Binding
+	Details  key.Binding
 	Quit     key.Binding
 }{
 	Up:       WithHelp(NewKeyBinding("up", "k"), "↑/k", "up"),
@@ -32,6 +33,7 @@ var dashboardKeys = struct {
 	Actions:  WithHelp(NewKeyBinding("a"), "a", "actions"),
 	NewApp:   WithHelp(NewKeyBinding("n"), "n", "new app"),
 	Logs:     WithHelp(NewKeyBinding("g"), "g", "logs"),
+	Details:  WithHelp(NewKeyBinding("d"), "d", "toggle details"),
 	Quit:     WithHelp(NewKeyBinding("esc"), "esc", "quit"),
 }
 
@@ -50,6 +52,7 @@ type Dashboard struct {
 	viewport       viewport.Model
 	toggling       bool
 	togglingApp    string
+	showDetails    bool
 	progress       ProgressBusy
 	help           Help
 	overlay        Component
@@ -81,6 +84,7 @@ func NewDashboard(ns *docker.Namespace, apps []*docker.Application, selectedInde
 		viewport:      vp,
 		header:        NewDashboardHeader(systemScraper),
 		hostname:      hostname,
+		showDetails:   true,
 		progress:      NewProgressBusy(0, Colors.Border),
 		help:          NewHelp(),
 	}
@@ -173,6 +177,13 @@ func (m Dashboard) Update(msg tea.Msg) (Component, tea.Cmd) {
 		}
 		if key.Matches(msg, dashboardKeys.Logs) && len(m.apps) > 0 {
 			return m, func() tea.Msg { return NavigateToLogsMsg{App: m.apps[m.selectedIndex]} }
+		}
+		if key.Matches(msg, dashboardKeys.Details) && len(m.apps) > 0 {
+			m.showDetails = !m.showDetails
+			m.updateViewportSize()
+			m.rebuildViewportContent()
+			m.scrollToSelection()
+			return m, nil
 		}
 
 	case SettingsMenuCloseMsg:
@@ -296,7 +307,7 @@ func (m Dashboard) helpBindings() []key.Binding {
 	if len(m.apps) > 0 {
 		return []key.Binding{
 			dashboardKeys.Up, dashboardKeys.Down, dashboardKeys.Actions,
-			dashboardKeys.Settings, dashboardKeys.Logs, dashboardKeys.NewApp, dashboardKeys.Quit,
+			dashboardKeys.Settings, dashboardKeys.Logs, dashboardKeys.Details, dashboardKeys.NewApp, dashboardKeys.Quit,
 		}
 	}
 	return []key.Binding{dashboardKeys.NewApp, dashboardKeys.Quit}
@@ -339,7 +350,7 @@ func (m *Dashboard) rebuildViewportContent() {
 	var views []string
 	for i := range m.panels {
 		toggling := m.toggling && m.togglingApp == m.panels[i].app.Settings.Name
-		views = append(views, m.panels[i].View(i == m.selectedIndex, toggling, m.width, scales))
+		views = append(views, m.panels[i].View(i == m.selectedIndex, toggling, m.showDetails, m.width, scales))
 	}
 	m.viewport.SetContent(lipgloss.JoinVertical(lipgloss.Left, views...))
 }
@@ -360,9 +371,9 @@ func (m *Dashboard) computeScales() DashboardScales {
 func (m *Dashboard) scrollToSelection() {
 	panelTop := 0
 	for i := range m.selectedIndex {
-		panelTop += m.panels[i].Height()
+		panelTop += m.panels[i].Height(m.showDetails)
 	}
-	panelBottom := panelTop + m.panels[m.selectedIndex].Height()
+	panelBottom := panelTop + m.panels[m.selectedIndex].Height(m.showDetails)
 	if panelTop < m.viewport.YOffset() {
 		m.viewport.SetYOffset(panelTop)
 	} else if panelBottom > m.viewport.YOffset()+m.viewport.Height() {
@@ -384,7 +395,7 @@ func (m *Dashboard) panelIndexAtY(y int) (int, bool) {
 	contentRow := vpRow + m.viewport.YOffset()
 	top := 0
 	for i := range m.panels {
-		h := m.panels[i].Height()
+		h := m.panels[i].Height(m.showDetails)
 		if contentRow < top+h {
 			return i, true
 		}

@@ -163,6 +163,35 @@ func TestDashboard_SettingsMenuStillWorks(t *testing.T) {
 	assert.NotNil(t, d.overlay)
 }
 
+func TestDashboard_ToggleDetails(t *testing.T) {
+	d := testDashboard(2)
+	d.width = 120
+	d.height = 40
+	d.updateViewportSize()
+	d.rebuildViewportContent()
+
+	assert.True(t, d.showDetails)
+	fullHeight := d.panels[0].Height(d.showDetails)
+
+	d, _ = updateDashboard(d, keyPressMsg("d"))
+	assert.False(t, d.showDetails)
+	compactHeight := d.panels[0].Height(d.showDetails)
+	assert.Less(t, compactHeight, fullHeight)
+
+	// Toggle back
+	d, _ = updateDashboard(d, keyPressMsg("d"))
+	assert.True(t, d.showDetails)
+}
+
+func TestDashboard_ToggleDetailsEmptyState(t *testing.T) {
+	d := testDashboard(0)
+	d, _ = updateDashboard(d, tea.WindowSizeMsg{Width: 80, Height: 24})
+
+	// Should not panic
+	d, _ = updateDashboard(d, keyPressMsg("d"))
+	assert.True(t, d.showDetails) // unchanged — guarded by len(m.apps) > 0
+}
+
 func TestDashboard_EmptyStateShowsMessage(t *testing.T) {
 	d := testDashboard(0)
 	d, _ = updateDashboard(d, tea.WindowSizeMsg{Width: 80, Height: 24})

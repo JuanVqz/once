@@ -45,8 +45,9 @@ func (p DashboardPanel) DataMaxes() (traffic float64) {
 	return maxValue(reqData)
 }
 
-func (p DashboardPanel) View(selected bool, toggling bool, width int, scales DashboardScales) string {
+func (p DashboardPanel) View(selected bool, toggling bool, showDetails bool, width int, scales DashboardScales) string {
 	innerWidth := max(width-3, 0) // 1 indicator + 1 left pad + 1 right pad
+	detailed := showDetails && p.app.Running
 
 	var cards [3]MetricCard
 	if p.app.Running {
@@ -64,9 +65,9 @@ func (p DashboardPanel) View(selected bool, toggling bool, width int, scales Das
 	var lines []string
 	lines = append(lines, titleLine)
 
-	// Show cards when the app is running and there's enough width
+	// Show cards when the app is running, details are on, and there's enough width
 	minCardWidth := 8
-	if p.app.Running && innerWidth >= minCardWidth*4+3 {
+	if detailed && innerWidth >= minCardWidth*4+3 {
 		cardViews := p.renderCards(innerWidth, cards)
 		lines = append(lines, cardViews)
 	}
@@ -74,7 +75,7 @@ func (p DashboardPanel) View(selected bool, toggling bool, width int, scales Das
 	content := lipgloss.JoinVertical(lipgloss.Left, lines...)
 
 	height := PanelHeight
-	if !p.app.Running {
+	if !detailed {
 		height = StoppedPanelHeight
 	}
 
@@ -91,16 +92,16 @@ func (p DashboardPanel) View(selected bool, toggling bool, width int, scales Das
 		body = bodyStyle.Render(content)
 	}
 
-	indicator := p.renderIndicator(selected)
+	indicator := p.renderIndicator(selected, height)
 	topTrans := p.renderTopTransition(selected, width)
 	bottomTrans := p.renderBottomTransition(selected, width)
 
 	return topTrans + "\n" + lipgloss.JoinHorizontal(lipgloss.Top, indicator, body) + "\n" + bottomTrans
 }
 
-func (p DashboardPanel) Height() int {
+func (p DashboardPanel) Height(showDetails bool) int {
 	bodyHeight := PanelHeight
-	if !p.app.Running {
+	if !showDetails || !p.app.Running {
 		bodyHeight = StoppedPanelHeight
 	}
 	return bodyHeight + 2 // top + bottom transition lines
@@ -227,11 +228,7 @@ func (p DashboardPanel) renderBottomTransition(selected bool, width int) string 
 	return indicatorChar + bodyChars
 }
 
-func (p DashboardPanel) renderIndicator(selected bool) string {
-	height := PanelHeight
-	if !p.app.Running {
-		height = StoppedPanelHeight
-	}
+func (p DashboardPanel) renderIndicator(selected bool, height int) string {
 	rows := make([]string, height)
 	if selected {
 		line := lipgloss.NewStyle().Foreground(Colors.Focused).Render("▐")
