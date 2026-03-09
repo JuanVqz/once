@@ -1,7 +1,6 @@
 package docker
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -27,6 +26,7 @@ var (
 	ErrPullFailed         = errors.New("pull failed")
 	ErrDeployFailed       = errors.New("deploy failed")
 	ErrVerificationFailed = errors.New("verification failed")
+	ErrUnpauseFailed      = errors.New("failed to unpause container after backup")
 )
 
 const (
@@ -181,29 +181,6 @@ func (a *Application) Deploy(ctx context.Context, progress DeployProgressCallbac
 	return a.deployWithVolume(ctx, vol, progress)
 }
 
-func (a *Application) Restore(ctx context.Context, volSettings ApplicationVolumeSettings, volumeData []byte) error {
-	if _, err := a.pullImage(ctx, nil); err != nil {
-		return err
-	}
-
-	vol, err := CreateVolume(ctx, a.namespace, a.Settings.Name, volSettings)
-	if err != nil {
-		return fmt.Errorf("creating volume: %w", err)
-	}
-
-	if err := a.populateVolume(ctx, vol, volumeData); err != nil {
-		vol.Destroy(ctx)
-		return fmt.Errorf("populating volume: %w", err)
-	}
-
-	if err := a.deployWithVolume(ctx, vol, nil); err != nil {
-		vol.Destroy(ctx)
-		return err
-	}
-
-	return nil
-}
-
 func (a *Application) VerifyHTTP(ctx context.Context) error {
 	url := a.URL()
 	if url == "" {
@@ -329,19 +306,10 @@ func (a *Application) deployWithVolume(ctx context.Context, vol *ApplicationVolu
 
 	env := a.Settings.BuildEnv(vol.SecretKeyBase())
 
-	var mounts []mount.Mount
-	for _, target := range AppVolumeMountTargets {
-		mounts = append(mounts, mount.Mount{
-			Type:   mount.TypeVolume,
-			Source: vol.Name(),
-			Target: target,
-		})
-	}
-
 	hostConfig := &container.HostConfig{
 		RestartPolicy: container.RestartPolicy{Name: container.RestartPolicyAlways},
 		LogConfig:     ContainerLogConfig(),
-		Mounts:        mounts,
+		Mounts:        a.volumeMounts(vol),
 	}
 	hostConfig.Resources = container.Resources{
 		Memory:   int64(a.Settings.Resources.MemoryMB) * 1024 * 1024,
@@ -390,63 +358,16 @@ func (a *Application) deployWithVolume(ctx context.Context, vol *ApplicationVolu
 	return nil
 }
 
-func (a *Application) populateVolume(ctx context.Context, vol *ApplicationVolume, data []byte) error {
-	containerName := fmt.Sprintf("%s-restore-temp", a.namespace.name)
-
-	resp, err := a.namespace.client.ContainerCreate(ctx,
-		&container.Config{
-			Image:      a.Settings.Image,
-			Entrypoint: []string{},
-			Cmd:        []string{"sleep", "infinity"},
-		},
-		&container.HostConfig{
-			Mounts: []mount.Mount{
-				{
-					Type:   mount.TypeVolume,
-					Source: vol.Name(),
-					Target: "/data",
-				},
-			},
-		},
-		nil,
-		nil,
-		containerName,
-	)
-	if err != nil {
-		return fmt.Errorf("creating temp container: %w", err)
+func (a *Application) volumeMounts(vol *ApplicationVolume) []mount.Mount {
+	var mounts []mount.Mount
+	for _, target := range AppVolumeMountTargets {
+		mounts = append(mounts, mount.Mount{
+			Type:   mount.TypeVolume,
+			Source: vol.Name(),
+			Target: target,
+		})
 	}
-
-	defer a.namespace.client.ContainerRemove(ctx, resp.ID, container.RemoveOptions{Force: true})
-
-	if err := a.namespace.client.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
-		return fmt.Errorf("starting temp container: %w", err)
-	}
-
-	if len(data) > 0 {
-		if err := a.namespace.client.CopyToContainer(ctx, resp.ID, "/", bytes.NewReader(data), container.CopyToContainerOptions{}); err != nil {
-			return fmt.Errorf("copying data to volume: %w", err)
-		}
-	}
-
-	return nil
-}
-
-func (a *Application) runHookScript(ctx context.Context, containerName, name string) error {
-	result, err := execInContainer(ctx, a.namespace.client, containerName, []string{"/scripts/" + name})
-	if err != nil {
-		return err
-	}
-
-	// Exit codes 126 (not executable) and 127 (not found) mean the script doesn't exist
-	if result.ExitCode == 126 || result.ExitCode == 127 {
-		return nil
-	}
-
-	if result.ExitCode != 0 {
-		return fmt.Errorf("hook script %q failed with exit code %d: %s", name, result.ExitCode, result.Stderr)
-	}
-
-	return nil
+	return mounts
 }
 
 func (a *Application) containerConfig(env []string) *container.Config {

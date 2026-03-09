@@ -1,6 +1,9 @@
 package docker
 
 import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
 	"context"
 	"errors"
 	"fmt"
@@ -330,6 +333,83 @@ func (n *Namespace) sortApplications() {
 	slices.SortFunc(n.applications, func(a, b *Application) int {
 		return strings.Compare(a.Settings.Host, b.Settings.Host)
 	})
+}
+
+func (n *Namespace) parseBackup(r io.Reader) (ApplicationSettings, ApplicationVolumeSettings, []byte, error) {
+	var appSettings ApplicationSettings
+	var volSettings ApplicationVolumeSettings
+	var volumeData bytes.Buffer
+
+	gr, err := gzip.NewReader(r)
+	if err != nil {
+		return appSettings, volSettings, nil, fmt.Errorf("%w: %v", ErrInvalidBackup, err)
+	}
+	defer gr.Close()
+
+	tr := tar.NewReader(gr)
+	tw := tar.NewWriter(&volumeData)
+	defer tw.Close()
+
+	foundApp := false
+	foundVol := false
+
+	for {
+		header, err := tr.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return appSettings, volSettings, nil, fmt.Errorf("%w: %v", ErrInvalidBackup, err)
+		}
+
+		switch header.Name {
+		case backupAppSettingsEntry:
+			data, err := io.ReadAll(tr)
+			if err != nil {
+				return appSettings, volSettings, nil, fmt.Errorf("%w: reading application settings: %v", ErrInvalidBackup, err)
+			}
+			appSettings, err = UnmarshalApplicationSettings(string(data))
+			if err != nil {
+				return appSettings, volSettings, nil, fmt.Errorf("%w: parsing application settings: %v", ErrInvalidBackup, err)
+			}
+			foundApp = true
+
+		case backupVolSettingsEntry:
+			data, err := io.ReadAll(tr)
+			if err != nil {
+				return appSettings, volSettings, nil, fmt.Errorf("%w: reading volume settings: %v", ErrInvalidBackup, err)
+			}
+			volSettings, err = UnmarshalApplicationVolumeSettings(string(data))
+			if err != nil {
+				return appSettings, volSettings, nil, fmt.Errorf("%w: parsing volume settings: %v", ErrInvalidBackup, err)
+			}
+			foundVol = true
+
+		default:
+			if header.Name == BackupDataDir || strings.HasPrefix(header.Name, BackupDataDir+"/") {
+				newHeader := *header
+				if header.Name == BackupDataDir {
+					newHeader.Name = "data"
+				} else {
+					newHeader.Name = "data" + strings.TrimPrefix(header.Name, BackupDataDir)
+				}
+				if err := tw.WriteHeader(&newHeader); err != nil {
+					return appSettings, volSettings, nil, err
+				}
+				if header.Size > 0 {
+					if _, err := io.Copy(tw, tr); err != nil {
+						return appSettings, volSettings, nil, err
+					}
+				}
+			}
+		}
+	}
+
+	if !foundApp || !foundVol {
+		return appSettings, volSettings, nil, fmt.Errorf("%w: missing required metadata files", ErrInvalidBackup)
+	}
+
+	return appSettings, volSettings, volumeData.Bytes(), nil
 }
 
 // Helpers

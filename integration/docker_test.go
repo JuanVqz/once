@@ -2,20 +2,29 @@ package integration
 
 import (
 	"archive/tar"
+	"bytes"
 	"compress/gzip"
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/docker/docker/api/types/build"
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/events"
+	"github.com/docker/docker/api/types/filters"
+	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
+	"github.com/docker/go-connections/nat"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -441,6 +450,103 @@ func TestRestoreHostnameConflictFails(t *testing.T) {
 	assert.ErrorIs(t, err, docker.ErrHostnameInUse)
 }
 
+func TestBackupHookBehavior(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	ns, err := docker.NewNamespace("once-backup-hook-test")
+	require.NoError(t, err)
+	defer ns.Teardown(ctx, true)
+
+	require.NoError(t, ns.EnsureNetwork(ctx))
+	require.NoError(t, ns.Proxy().Boot(ctx, getProxyPorts(t)))
+
+	app := ns.AddApplication(docker.ApplicationSettings{
+		Name:  "hooktest",
+		Image: "ghcr.io/basecamp/once-campfire:main",
+		Host:  "hooktest.localhost",
+	})
+	require.NoError(t, app.Deploy(ctx, nil))
+
+	containerName, err := app.ContainerName(ctx)
+	require.NoError(t, err)
+
+	backupDir := t.TempDir()
+
+	t.Run("WithoutHook", func(t *testing.T) {
+		stop := collectPauseEvents(t, ctx, containerName)
+		require.NoError(t, app.BackupToFile(ctx, backupDir, "no-hook.tar.gz"))
+		actions := stop()
+		assert.Contains(t, actions, "pause")
+		assert.Contains(t, actions, "unpause")
+	})
+
+	t.Run("WithSuccessfulHook", func(t *testing.T) {
+		copyHookToContainer(t, ctx, containerName, "pre-backup", []byte("#!/bin/sh\nexit 0"))
+
+		stop := collectPauseEvents(t, ctx, containerName)
+		require.NoError(t, app.BackupToFile(ctx, backupDir, "successful-hook.tar.gz"))
+		actions := stop()
+		assert.Empty(t, actions)
+	})
+
+	t.Run("WithFailedHook", func(t *testing.T) {
+		copyHookToContainer(t, ctx, containerName, "pre-backup", []byte("#!/bin/sh\nexit 1"))
+
+		stop := collectPauseEvents(t, ctx, containerName)
+		require.NoError(t, app.BackupToFile(ctx, backupDir, "failed-hook.tar.gz"))
+		actions := stop()
+		assert.Contains(t, actions, "pause")
+		assert.Contains(t, actions, "unpause")
+	})
+}
+
+func TestRestoreWithPostRestoreHook(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	registryURL := startLocalRegistry(t, ctx)
+	hookImage := buildHookImage(t, ctx, registryURL, "restore-hook-success", "#!/bin/sh\ncp /storage/hook-input /storage/hook-output")
+
+	backup := buildTestBackup(t, hookImage)
+
+	ns, err := docker.NewNamespace("once-restore-hook-test")
+	require.NoError(t, err)
+	defer ns.Teardown(ctx, true)
+
+	require.NoError(t, ns.EnsureNetwork(ctx))
+	require.NoError(t, ns.Proxy().Boot(ctx, getProxyPorts(t)))
+
+	restoredApp, err := ns.Restore(ctx, bytes.NewReader(backup))
+	require.NoError(t, err)
+	assert.NotEmpty(t, restoredApp.Settings.Name)
+
+	containerName, err := restoredApp.ContainerName(ctx)
+	require.NoError(t, err)
+	execInContainer(t, ctx, containerName, []string{"test", "-f", "/storage/hook-output"})
+}
+
+func TestRestoreFailsWithFailedPostRestoreHook(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	registryURL := startLocalRegistry(t, ctx)
+	hookImage := buildHookImage(t, ctx, registryURL, "restore-hook-fail", "#!/bin/sh\nexit 1")
+
+	backup := buildTestBackup(t, hookImage)
+
+	ns, err := docker.NewNamespace("once-restore-hook-fail-test")
+	require.NoError(t, err)
+	defer ns.Teardown(ctx, true)
+
+	require.NoError(t, ns.EnsureNetwork(ctx))
+	require.NoError(t, ns.Proxy().Boot(ctx, getProxyPorts(t)))
+
+	_, err = ns.Restore(ctx, bytes.NewReader(backup))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "post-restore")
+}
+
 func TestRemoveApplication(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
@@ -632,6 +738,207 @@ func execInContainer(t *testing.T, ctx context.Context, containerName string, cm
 	inspect, err := c.ContainerExecInspect(ctx, execResp.ID)
 	require.NoError(t, err)
 	require.Equal(t, 0, inspect.ExitCode, "exec command failed")
+}
+
+func copyHookToContainer(t *testing.T, ctx context.Context, containerName, hookName string, script []byte) {
+	t.Helper()
+
+	c, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	require.NoError(t, err)
+	defer c.Close()
+
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	require.NoError(t, tw.WriteHeader(&tar.Header{
+		Name:     "scripts/",
+		Typeflag: tar.TypeDir,
+		Mode:     0755,
+	}))
+	require.NoError(t, tw.WriteHeader(&tar.Header{
+		Name: "scripts/" + hookName,
+		Mode: 0755,
+		Size: int64(len(script)),
+	}))
+	_, err = tw.Write(script)
+	require.NoError(t, err)
+	require.NoError(t, tw.Close())
+
+	require.NoError(t, c.CopyToContainer(ctx, containerName, "/", &buf, container.CopyToContainerOptions{}))
+}
+
+func collectPauseEvents(t *testing.T, ctx context.Context, containerName string) func() []string {
+	t.Helper()
+	c, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	require.NoError(t, err)
+
+	eventCtx, eventCancel := context.WithCancel(ctx)
+	eventCh, errCh := c.Events(eventCtx, events.ListOptions{
+		Filters: filters.NewArgs(
+			filters.Arg("container", containerName),
+			filters.Arg("event", "pause"),
+			filters.Arg("event", "unpause"),
+		),
+	})
+
+	var actions []string
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			select {
+			case e, ok := <-eventCh:
+				if !ok {
+					return
+				}
+				actions = append(actions, string(e.Action))
+			case <-errCh:
+				return
+			}
+		}
+	}()
+
+	return func() []string {
+		time.Sleep(100 * time.Millisecond)
+		eventCancel()
+		<-done
+		c.Close()
+		return actions
+	}
+}
+
+func startLocalRegistry(t *testing.T, ctx context.Context) string {
+	t.Helper()
+	c, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	require.NoError(t, err)
+	defer c.Close()
+
+	reader, err := c.ImagePull(ctx, "registry:2", image.PullOptions{})
+	require.NoError(t, err)
+	io.Copy(io.Discard, reader)
+	reader.Close()
+
+	port := getFreePort(t)
+	portStr := strconv.Itoa(port)
+
+	resp, err := c.ContainerCreate(ctx,
+		&container.Config{Image: "registry:2"},
+		&container.HostConfig{
+			PortBindings: nat.PortMap{
+				"5000/tcp": []nat.PortBinding{{HostPort: portStr}},
+			},
+		},
+		nil, nil, fmt.Sprintf("test-registry-%s", portStr),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		c.ContainerRemove(context.Background(), resp.ID, container.RemoveOptions{Force: true})
+	})
+
+	require.NoError(t, c.ContainerStart(ctx, resp.ID, container.StartOptions{}))
+
+	registryURL := fmt.Sprintf("localhost:%d", port)
+	require.Eventually(t, func() bool {
+		resp, err := http.Get("http://" + registryURL + "/v2/")
+		if err != nil {
+			return false
+		}
+		resp.Body.Close()
+		return resp.StatusCode == http.StatusOK
+	}, 10*time.Second, 200*time.Millisecond, "registry did not become ready")
+
+	return registryURL
+}
+
+func buildHookImage(t *testing.T, ctx context.Context, registryURL, name, hookScript string) string {
+	t.Helper()
+	c, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	require.NoError(t, err)
+	defer c.Close()
+
+	dockerfile := `FROM ghcr.io/basecamp/once-campfire:main
+COPY post-restore /scripts/post-restore
+`
+
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	addTarEntry := func(name string, data []byte) {
+		require.NoError(t, tw.WriteHeader(&tar.Header{Name: name, Size: int64(len(data)), Mode: 0644}))
+		_, err := tw.Write(data)
+		require.NoError(t, err)
+	}
+	addTarEntry("Dockerfile", []byte(dockerfile))
+
+	require.NoError(t, tw.WriteHeader(&tar.Header{Name: "post-restore", Size: int64(len(hookScript)), Mode: 0755}))
+	_, err = tw.Write([]byte(hookScript))
+	require.NoError(t, err)
+	require.NoError(t, tw.Close())
+
+	fullTag := registryURL + "/" + name + ":latest"
+
+	buildResp, err := c.ImageBuild(ctx, &buf, build.ImageBuildOptions{
+		Tags:       []string{fullTag},
+		Dockerfile: "Dockerfile",
+		Remove:     true,
+	})
+	require.NoError(t, err)
+	io.Copy(io.Discard, buildResp.Body)
+	buildResp.Body.Close()
+
+	pushResp, err := c.ImagePush(ctx, fullTag, image.PushOptions{RegistryAuth: "e30="}) // base64 "{}"
+	require.NoError(t, err)
+	io.Copy(io.Discard, pushResp)
+	pushResp.Close()
+
+	return fullTag
+}
+
+func buildTestBackup(t *testing.T, imageName string) []byte {
+	t.Helper()
+
+	appSettings := docker.ApplicationSettings{
+		Name:  "hookapp",
+		Image: imageName,
+		Host:  "hookapp.localhost",
+	}
+	volSettings := docker.ApplicationVolumeSettings{SecretKeyBase: "test-secret-key"}
+
+	var buf bytes.Buffer
+	gw := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gw)
+
+	writeEntry := func(name string, data []byte) {
+		header := &tar.Header{Name: name, Size: int64(len(data)), Mode: 0644}
+		require.NoError(t, tw.WriteHeader(header))
+		_, err := tw.Write(data)
+		require.NoError(t, err)
+	}
+
+	writeEntry("once.application.json", []byte(appSettings.Marshal()))
+	writeEntry("once.volume.json", []byte(volSettings.Marshal()))
+
+	// Add data directory with a marker file for hook testing.
+	// Use UID/GID 1000 to match realistic backup ownership.
+	require.NoError(t, tw.WriteHeader(&tar.Header{
+		Name:     "data/",
+		Typeflag: tar.TypeDir,
+		Mode:     0755,
+		Uid:      1000,
+		Gid:      1000,
+	}))
+	require.NoError(t, tw.WriteHeader(&tar.Header{
+		Name: "data/hook-input",
+		Mode: 0644,
+		Size: int64(len("test data")),
+		Uid:  1000,
+		Gid:  1000,
+	}))
+	_, writeErr := tw.Write([]byte("test data"))
+	require.NoError(t, writeErr)
+
+	require.NoError(t, tw.Close())
+	require.NoError(t, gw.Close())
+
+	return buf.Bytes()
 }
 
 func extractTarGz(t *testing.T, r io.Reader) map[string][]byte {
