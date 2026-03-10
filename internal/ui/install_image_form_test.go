@@ -24,7 +24,7 @@ func TestInstallImageForm_SubmitWithAlias(t *testing.T) {
 func TestInstallImageForm_SubmitWithCustomImage(t *testing.T) {
 	form := NewInstallImageForm()
 
-	imageFormTypeText(&form, "nginx:latest")
+	imageFormTypeText(&form, "ghcr.io/basecamp/once-campfire:latest")
 	imageFormPressTab(&form)
 	form, cmd := form.Update(keyPressMsg("enter"))
 	require.NotNil(t, cmd)
@@ -32,7 +32,7 @@ func TestInstallImageForm_SubmitWithCustomImage(t *testing.T) {
 	msg := cmd()
 	submit, ok := msg.(InstallImageSubmitMsg)
 	require.True(t, ok, "expected InstallImageSubmitMsg, got %T", msg)
-	assert.Equal(t, "nginx:latest", submit.ImageRef)
+	assert.Equal(t, "ghcr.io/basecamp/once-campfire:latest", submit.ImageRef)
 }
 
 func TestInstallImageForm_Cancel(t *testing.T) {

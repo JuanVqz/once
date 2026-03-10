@@ -167,7 +167,7 @@ func testSettings() Settings {
 		Settings: docker.ApplicationSettings{
 			Name:  "test-app",
 			Host:  "app.example.com",
-			Image: "nginx:latest",
+			Image: "ghcr.io/basecamp/once-campfire:latest",
 		},
 	}
 

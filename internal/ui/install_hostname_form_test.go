@@ -24,7 +24,7 @@ func TestInstallHostnameForm_Submit(t *testing.T) {
 }
 
 func TestInstallHostnameForm_Cancel(t *testing.T) {
-	form := NewInstallHostnameForm("nginx:latest", "")
+	form := NewInstallHostnameForm("ghcr.io/basecamp/once-campfire:latest", "")
 
 	// Tab to submit, tab to cancel
 	hostnameFormPressTab(&form)
@@ -38,7 +38,7 @@ func TestInstallHostnameForm_Cancel(t *testing.T) {
 }
 
 func TestInstallHostnameForm_RequiresHostname(t *testing.T) {
-	form := NewInstallHostnameForm("nginx:latest", "")
+	form := NewInstallHostnameForm("ghcr.io/basecamp/once-campfire:latest", "")
 
 	// Tab to submit button, then press enter with empty hostname
 	hostnameFormPressTab(&form)
@@ -47,7 +47,7 @@ func TestInstallHostnameForm_RequiresHostname(t *testing.T) {
 }
 
 func TestInstallHostnameForm_Hostname(t *testing.T) {
-	form := NewInstallHostnameForm("nginx:latest", "")
+	form := NewInstallHostnameForm("ghcr.io/basecamp/once-campfire:latest", "")
 	hostnameFormTypeText(&form, "app.example.com")
 	assert.Equal(t, "app.example.com", form.Hostname())
 }

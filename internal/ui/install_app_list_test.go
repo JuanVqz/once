@@ -81,7 +81,7 @@ func TestExpandAlias(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, "ghcr.io/basecamp/writebook", ref)
 
-	ref, ok = expandAlias("nginx:latest")
+	ref, ok = expandAlias("ghcr.io/basecamp/once-campfire:latest")
 	assert.False(t, ok)
-	assert.Equal(t, "nginx:latest", ref)
+	assert.Equal(t, "ghcr.io/basecamp/once-campfire:latest", ref)
 }
