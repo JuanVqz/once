@@ -28,6 +28,7 @@ type (
 	scrapeTickMsg          struct{}
 	scrapeUserStatsTickMsg struct{}
 	scrapeDoneMsg          struct{}
+
 	NavigateToInstallMsg   struct{}
 	NavigateToDashboardMsg struct {
 		AppName    string
@@ -38,12 +39,10 @@ type (
 		App     *docker.Application
 		Section SettingsSectionType
 	}
-)
-
-type (
 	NavigateToLogsMsg   struct{ App *docker.Application }
 	NavigateToRemoveMsg struct{ App *docker.Application }
-	QuitMsg             struct{}
+
+	QuitMsg struct{}
 )
 
 type SettingsSectionType int
