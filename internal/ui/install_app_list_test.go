@@ -54,7 +54,7 @@ func TestInstallAppList_NavigateAndSelect(t *testing.T) {
 	msg := cmd()
 	selected, ok := msg.(InstallAppSelectedMsg)
 	require.True(t, ok, "expected InstallAppSelectedMsg, got %T", msg)
-	assert.Equal(t, "ghcr.io/basecamp/fizzy:main", selected.ImageRef)
+	assert.Equal(t, "ghcr.io/basecamp/fizzy", selected.ImageRef)
 }
 
 func TestInstallAppList_View(t *testing.T) {
@@ -75,11 +75,11 @@ func TestExpandAlias(t *testing.T) {
 
 	ref, ok = expandAlias("fizzy")
 	assert.True(t, ok)
-	assert.Equal(t, "ghcr.io/basecamp/fizzy:main", ref)
+	assert.Equal(t, "ghcr.io/basecamp/fizzy", ref)
 
 	ref, ok = expandAlias("writebook")
 	assert.True(t, ok)
-	assert.Equal(t, "ghcr.io/basecamp/writebook:main", ref)
+	assert.Equal(t, "ghcr.io/basecamp/writebook", ref)
 
 	ref, ok = expandAlias("nginx:latest")
 	assert.False(t, ok)
