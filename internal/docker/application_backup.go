@@ -302,7 +302,7 @@ func (a *Application) runHookScript(ctx context.Context, containerName, name str
 }
 
 func (a *Application) tryHookScript(ctx context.Context, containerName, name string) (bool, error) {
-	path := "/scripts/" + name
+	path := "/hooks/" + name
 
 	_, err := a.namespace.client.ContainerStatPath(ctx, containerName, path)
 	if err != nil {

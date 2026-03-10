@@ -750,12 +750,12 @@ func copyHookToContainer(t *testing.T, ctx context.Context, containerName, hookN
 	var buf bytes.Buffer
 	tw := tar.NewWriter(&buf)
 	require.NoError(t, tw.WriteHeader(&tar.Header{
-		Name:     "scripts/",
+		Name:     "hooks/",
 		Typeflag: tar.TypeDir,
 		Mode:     0755,
 	}))
 	require.NoError(t, tw.WriteHeader(&tar.Header{
-		Name: "scripts/" + hookName,
+		Name: "hooks/" + hookName,
 		Mode: 0755,
 		Size: int64(len(script)),
 	}))
@@ -856,7 +856,7 @@ func buildHookImage(t *testing.T, ctx context.Context, registryURL, name, hookSc
 	defer c.Close()
 
 	dockerfile := `FROM ghcr.io/basecamp/once-campfire:main
-COPY post-restore /scripts/post-restore
+COPY post-restore /hooks/post-restore
 `
 
 	var buf bytes.Buffer
