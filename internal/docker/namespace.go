@@ -172,7 +172,7 @@ func (n *Namespace) Teardown(ctx context.Context, destroyVolumes bool) error {
 		}
 	}
 
-	if err := n.proxy.Destroy(ctx, destroyVolumes); err != nil {
+	if err := n.proxy.Destroy(ctx); err != nil {
 		return err
 	}
 

@@ -146,7 +146,7 @@ func (p *Proxy) Boot(ctx context.Context, settings ProxySettings) error {
 	return nil
 }
 
-func (p *Proxy) Destroy(ctx context.Context, destroyVolumes bool) error {
+func (p *Proxy) Destroy(ctx context.Context) error {
 	containerName := p.containerName()
 
 	if err := p.namespace.client.ContainerRemove(ctx, containerName, container.RemoveOptions{Force: true}); err != nil {
@@ -155,11 +155,9 @@ func (p *Proxy) Destroy(ctx context.Context, destroyVolumes bool) error {
 		}
 	}
 
-	if destroyVolumes {
-		if err := p.namespace.client.VolumeRemove(ctx, containerName, true); err != nil {
-			if !errdefs.IsNotFound(err) {
-				return fmt.Errorf("removing proxy volume: %w", err)
-			}
+	if err := p.namespace.client.VolumeRemove(ctx, containerName, true); err != nil {
+		if !errdefs.IsNotFound(err) {
+			return fmt.Errorf("removing proxy volume: %w", err)
 		}
 	}
 
