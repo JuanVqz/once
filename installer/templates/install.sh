@@ -2,6 +2,7 @@
 set -eu
 
 REPO='basecamp/once'
+INSTALL_DIR='/usr/local/bin'
 IMAGE_REF='{{ .ImageRef }}'
 RELEASE_JSON=''
 
@@ -10,7 +11,7 @@ main() {
   arch=$(detect_arch)
   ensure_docker "$os"
   fetch_latest_release
-  install_once "$os" "$arch"
+  install_once "$arch"
   run_once
 }
 
@@ -76,8 +77,7 @@ ensure_docker() {
 }
 
 install_once() {
-  os="$1"
-  arch="$2"
+  arch="$1"
 
   if command -v once >/dev/null 2>&1; then
     echo "once is already installed at $(command -v once)"
@@ -95,23 +95,17 @@ install_once() {
     exit 1
   fi
 
-  if [ "$os" = "linux" ]; then
-    install_dir="/usr/bin"
-  else
-    install_dir="/usr/local/bin"
-  fi
-
   tmpfile=$(mktemp)
   download "$asset_url" "$tmpfile" "application/octet-stream"
 
   if is_root; then
-    install -m 755 "$tmpfile" "${install_dir}/once"
+    install -m 755 "$tmpfile" "${INSTALL_DIR}/once"
   else
-    sudo install -m 755 "$tmpfile" "${install_dir}/once"
+    sudo install -m 755 "$tmpfile" "${INSTALL_DIR}/once"
   fi
   rm -f "$tmpfile"
 
-  echo "Installed once to ${install_dir}/once"
+  echo "Installed once to ${INSTALL_DIR}/once"
 
   echo "Installing background service..."
   if is_root; then
