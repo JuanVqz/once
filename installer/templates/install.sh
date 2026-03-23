@@ -13,6 +13,12 @@ main() {
   ensure_docker "$os"
   fetch_latest_release
   install_once "$arch"
+
+  if [ "${ONCE_INTERACTIVE:-}" = "false" ]; then
+    echo "once is installed. Run 'once' to get started."
+    return
+  fi
+
   run_once
 }
 
