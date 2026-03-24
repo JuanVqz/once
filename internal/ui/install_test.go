@@ -86,7 +86,8 @@ func TestInstall_SuccessNavigatesToApp(t *testing.T) {
 }
 
 func TestInstall_FailureReturnsToHostname(t *testing.T) {
-	m := newTestInstall()
+	ns := newTestNamespace()
+	m := NewInstall(ns, "")
 	m, _ = updateInstall(m, tea.WindowSizeMsg{Width: 80, Height: 24})
 
 	// Go through known app flow to hostname
@@ -220,7 +221,8 @@ func TestInstall_ShowsTitleAndHidesLogoWhenAppsExist(t *testing.T) {
 }
 
 func TestInstall_PullFailureReturnsToImageForm(t *testing.T) {
-	m := newTestInstall()
+	ns := newTestNamespace()
+	m := NewInstall(ns, "")
 	m, _ = updateInstall(m, tea.WindowSizeMsg{Width: 80, Height: 24})
 	m, _ = updateInstall(m, InstallCustomSelectedMsg{})
 	m, _ = updateInstall(m, InstallImageSubmitMsg{ImageRef: "bad:image"})
@@ -234,7 +236,8 @@ func TestInstall_PullFailureReturnsToImageForm(t *testing.T) {
 }
 
 func TestInstall_PullFailureReturnsToAppList(t *testing.T) {
-	m := newTestInstall()
+	ns := newTestNamespace()
+	m := NewInstall(ns, "")
 	m, _ = updateInstall(m, tea.WindowSizeMsg{Width: 80, Height: 24})
 	m, _ = updateInstall(m, InstallAppSelectedMsg{ImageRef: "ghcr.io/basecamp/once-campfire"})
 	m, _ = updateInstall(m, InstallFormSubmitMsg{ImageRef: "ghcr.io/basecamp/once-campfire", Hostname: "chat.example.com"})
@@ -247,7 +250,8 @@ func TestInstall_PullFailureReturnsToAppList(t *testing.T) {
 }
 
 func TestInstall_NonPullDeployFailureReturnsToHostname(t *testing.T) {
-	m := newTestInstall()
+	ns := newTestNamespace()
+	m := NewInstall(ns, "")
 	m, _ = updateInstall(m, tea.WindowSizeMsg{Width: 80, Height: 24})
 	m, _ = updateInstall(m, InstallAppSelectedMsg{ImageRef: "ghcr.io/basecamp/once-campfire"})
 	m, _ = updateInstall(m, InstallFormSubmitMsg{ImageRef: "ghcr.io/basecamp/once-campfire", Hostname: "chat.example.com"})
@@ -281,7 +285,8 @@ func TestInstall_UniqueHostnameAllowsInstall(t *testing.T) {
 }
 
 func TestInstall_FailureDoesNotRestartLogo(t *testing.T) {
-	noApps := NewInstall(nil, "")
+	ns := newTestNamespace()
+	noApps := NewInstall(ns, "")
 	noApps, _ = updateInstall(noApps, tea.WindowSizeMsg{Width: 80, Height: 40})
 	noApps, _ = updateInstall(noApps, InstallFormSubmitMsg{ImageRef: "ghcr.io/basecamp/once-campfire:latest", Hostname: "app.example.com"})
 	_, cmd := updateInstall(noApps, InstallActivityFailedMsg{Err: errors.New("fail")})
