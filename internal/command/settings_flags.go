@@ -2,6 +2,7 @@ package command
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -45,6 +46,10 @@ func (f *settingsFlags) buildSettings(image, host string) (docker.ApplicationSet
 	envVars, err := f.parseEnvVars()
 	if err != nil {
 		return docker.ApplicationSettings{}, err
+	}
+
+	if f.backupPath != "" && !filepath.IsAbs(f.backupPath) {
+		return docker.ApplicationSettings{}, docker.ErrBackupPathRelative
 	}
 
 	return docker.ApplicationSettings{
@@ -112,6 +117,9 @@ func (f *settingsFlags) applyChanges(cmd *cobra.Command, existing docker.Applica
 		s.AutoUpdate = f.autoUpdate
 	}
 	if cmd.Flags().Changed("backup-path") {
+		if f.backupPath != "" && !filepath.IsAbs(f.backupPath) {
+			return s, docker.ErrBackupPathRelative
+		}
 		s.Backup.Path = f.backupPath
 	}
 	if cmd.Flags().Changed("auto-backup") {

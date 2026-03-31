@@ -29,12 +29,15 @@ func newBackupCommand() *backupCommand {
 
 func (b *backupCommand) run(ctx context.Context, ns *docker.Namespace, cmd *cobra.Command, args []string) error {
 	host := args[0]
-	filename := args[1]
+	filename, err := filepath.Abs(args[1])
+	if err != nil {
+		return fmt.Errorf("resolving path: %w", err)
+	}
 
 	dir := filepath.Dir(filename)
 	name := filepath.Base(filename)
 
-	err := withApplication(ns, host, "backing up", func(app *docker.Application) error {
+	err = withApplication(ns, host, "backing up", func(app *docker.Application) error {
 		return app.BackupToFile(ctx, dir, name)
 	})
 	if err != nil {
