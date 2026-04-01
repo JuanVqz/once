@@ -35,27 +35,22 @@ func TestApplyChanges(t *testing.T) {
 		},
 	}
 
-	newCmd := func(changed ...string) *cobra.Command {
+	newCmd := func() (*cobra.Command, *settingsFlags) {
 		cmd := &cobra.Command{}
 		f := &settingsFlags{}
 		f.register(cmd)
-		for _, name := range changed {
-			require.NoError(t, cmd.Flags().Set(name, cmd.Flags().Lookup(name).DefValue))
-		}
-		return cmd
+		return cmd, f
 	}
 
 	t.Run("no flags changed returns existing", func(t *testing.T) {
-		f := &settingsFlags{}
-		cmd := newCmd()
+		cmd, f := newCmd()
 		result, err := f.applyChanges(cmd, existing, existing.Image)
 		require.NoError(t, err)
 		assert.True(t, existing.Equal(result))
 	})
 
 	t.Run("single flag changed", func(t *testing.T) {
-		f := &settingsFlags{memory: 2048}
-		cmd := newCmd()
+		cmd, f := newCmd()
 		require.NoError(t, cmd.Flags().Set("memory", "2048"))
 
 		result, err := f.applyChanges(cmd, existing, existing.Image)
@@ -67,8 +62,7 @@ func TestApplyChanges(t *testing.T) {
 	})
 
 	t.Run("multiple flags changed", func(t *testing.T) {
-		f := &settingsFlags{host: "new.example.com", cpus: 4, autoBackup: false}
-		cmd := newCmd()
+		cmd, f := newCmd()
 		require.NoError(t, cmd.Flags().Set("host", "new.example.com"))
 		require.NoError(t, cmd.Flags().Set("cpus", "4"))
 		require.NoError(t, cmd.Flags().Set("auto-backup", "false"))
@@ -85,8 +79,7 @@ func TestApplyChanges(t *testing.T) {
 	})
 
 	t.Run("env replaces all vars", func(t *testing.T) {
-		f := &settingsFlags{env: []string{"NEW=val"}}
-		cmd := newCmd()
+		cmd, f := newCmd()
 		require.NoError(t, cmd.Flags().Set("env", "NEW=val"))
 
 		result, err := f.applyChanges(cmd, existing, existing.Image)
@@ -95,8 +88,7 @@ func TestApplyChanges(t *testing.T) {
 	})
 
 	t.Run("invalid env returns error", func(t *testing.T) {
-		f := &settingsFlags{env: []string{"INVALID"}}
-		cmd := newCmd()
+		cmd, f := newCmd()
 		require.NoError(t, cmd.Flags().Set("env", "INVALID"))
 
 		_, err := f.applyChanges(cmd, existing, existing.Image)
@@ -104,8 +96,7 @@ func TestApplyChanges(t *testing.T) {
 	})
 
 	t.Run("empty image", func(t *testing.T) {
-		f := &settingsFlags{}
-		cmd := newCmd()
+		cmd, f := newCmd()
 
 		_, err := f.applyChanges(cmd, existing, "")
 		assert.ErrorIs(t, err, docker.ErrImageRequired)
@@ -115,8 +106,7 @@ func TestApplyChanges(t *testing.T) {
 		noAutoBackup := existing
 		noAutoBackup.Backup.AutoBackup = false
 
-		f := &settingsFlags{autoBackup: true}
-		cmd := newCmd()
+		cmd, f := newCmd()
 		require.NoError(t, cmd.Flags().Set("auto-backup", "true"))
 
 		result, err := f.applyChanges(cmd, noAutoBackup, noAutoBackup.Image)
@@ -129,8 +119,7 @@ func TestApplyChanges(t *testing.T) {
 		noPath.Backup.Path = ""
 		noPath.Backup.AutoBackup = false
 
-		f := &settingsFlags{autoBackup: true}
-		cmd := newCmd()
+		cmd, f := newCmd()
 		require.NoError(t, cmd.Flags().Set("auto-backup", "true"))
 
 		_, err := f.applyChanges(cmd, noPath, noPath.Image)
@@ -138,8 +127,7 @@ func TestApplyChanges(t *testing.T) {
 	})
 
 	t.Run("clear backup path with auto-backup enabled", func(t *testing.T) {
-		f := &settingsFlags{backupPath: ""}
-		cmd := newCmd()
+		cmd, f := newCmd()
 		require.NoError(t, cmd.Flags().Set("backup-path", ""))
 
 		_, err := f.applyChanges(cmd, existing, existing.Image)
@@ -150,8 +138,7 @@ func TestApplyChanges(t *testing.T) {
 		noBackup := existing
 		noBackup.Backup = docker.BackupSettings{}
 
-		f := &settingsFlags{autoBackup: true, backupPath: "/backups"}
-		cmd := newCmd()
+		cmd, f := newCmd()
 		require.NoError(t, cmd.Flags().Set("auto-backup", "true"))
 		require.NoError(t, cmd.Flags().Set("backup-path", "/backups"))
 
